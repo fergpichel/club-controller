@@ -93,12 +93,12 @@ export const mockClub: Club = {
 
 // === USERS ===
 export const mockUsers: User[] = [
-  { uid: 'user_001', email: 'admin@balonmanxiria.com', displayName: 'Carlos García Rodríguez', role: 'admin', clubId: 'club_xiria_001', createdAt: new Date('2020-01-15'), updatedAt: new Date('2024-01-01') },
+  { uid: 'user_001', email: 'admin@balonmanxiria.com', displayName: 'Jessica Posse', role: 'admin', clubId: 'club_xiria_001', createdAt: new Date('2020-01-15'), updatedAt: new Date('2024-01-01') },
   { uid: 'user_002', email: 'director@balonmanxiria.com', displayName: 'María López Fernández', role: 'manager', clubId: 'club_xiria_001', createdAt: new Date('2020-03-10'), updatedAt: new Date('2024-01-01') },
   { uid: 'user_003', email: 'tesorero@balonmanxiria.com', displayName: 'Pedro Martínez Silva', role: 'manager', clubId: 'club_xiria_001', createdAt: new Date('2021-09-01'), updatedAt: new Date('2024-01-01') },
   { uid: 'user_004', email: 'entrenador1@balonmanxiria.com', displayName: 'Luis Sánchez Pérez', role: 'employee', clubId: 'club_xiria_001', createdAt: new Date('2022-09-01'), updatedAt: new Date('2024-01-01') },
   { uid: 'user_005', email: 'entrenador2@balonmanxiria.com', displayName: 'Ana Vázquez Torres', role: 'employee', clubId: 'club_xiria_001', createdAt: new Date('2022-09-01'), updatedAt: new Date('2024-01-01') },
-  { uid: 'user_006', email: 'gestoria@asesores.com', displayName: 'Gestoria Fernández & Asociados', role: 'accountant', clubId: 'club_xiria_001', createdAt: new Date('2020-01-15'), updatedAt: new Date('2024-01-01') }
+  { uid: 'user_006', email: 'gestoria@asesores.com', displayName: 'Roberto Martínez Puga', role: 'accountant', clubId: 'club_xiria_001', createdAt: new Date('2020-01-15'), updatedAt: new Date('2024-01-01') }
 ]
 
 // === CATEGORIES ===
