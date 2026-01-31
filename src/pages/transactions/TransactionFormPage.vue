@@ -54,17 +54,45 @@
             </q-input>
 
             <q-select
-              v-model="categoryId"
-              :options="categoryOptions"
+              v-model="parentCategoryId"
+              :options="parentCategoryOptions"
               label="Categoría"
               outlined
               emit-value
               map-options
               :rules="[val => !!val || 'Categoría requerida']"
               class="q-mb-md"
+              @update:model-value="onParentCategoryChange"
             >
               <template #prepend>
                 <q-icon name="category" />
+              </template>
+              <template #option="scope">
+                <q-item v-bind="scope.itemProps">
+                  <q-item-section avatar>
+                    <q-icon :name="scope.opt.icon" :style="{ color: scope.opt.color }" />
+                  </q-item-section>
+                  <q-item-section>
+                    <q-item-label>{{ scope.opt.label }}</q-item-label>
+                  </q-item-section>
+                </q-item>
+              </template>
+            </q-select>
+
+            <q-select
+              v-if="subcategoryOptions.length > 0"
+              v-model="subcategoryId"
+              :options="subcategoryOptions"
+              label="Subcategoría (opcional)"
+              outlined
+              emit-value
+              map-options
+              clearable
+              class="q-mb-md"
+              hint="Especifica el tipo exacto de gasto/ingreso"
+            >
+              <template #prepend>
+                <q-icon name="subdirectory_arrow_right" />
               </template>
               <template #option="scope">
                 <q-item v-bind="scope.itemProps">
@@ -291,8 +319,12 @@ const isEditing = computed(() => !!props.id || !!route.params.id);
 // Form fields
 const amount = ref<number | null>(null);
 const description = ref('');
-const categoryId = ref<string | null>(null);
+const parentCategoryId = ref<string | null>(null);
+const subcategoryId = ref<string | null>(null);
 const date = ref(format(new Date(), 'yyyy-MM-dd'));
+
+// The actual categoryId used for saving (subcategory if selected, else parent)
+const categoryId = computed(() => subcategoryId.value || parentCategoryId.value);
 const paymentMethod = ref<PaymentMethod>('bank_transfer');
 const teamId = ref<string | null>(null);
 const projectId = ref<string | null>(null);
@@ -303,11 +335,11 @@ const reference = ref('');
 const newAttachments = ref<File[]>([]);
 const existingAttachments = ref<Attachment[]>([]);
 
-// Options
-const categoryOptions = computed(() => {
+// Options - Categories with hierarchy
+const parentCategoryOptions = computed(() => {
   const categories = transactionType.value === 'income'
-    ? categoriesStore.incomeCategories
-    : categoriesStore.expenseCategories;
+    ? categoriesStore.incomeParentCategories
+    : categoriesStore.expenseParentCategories;
 
   return categories.map(c => ({
     label: c.name,
@@ -316,6 +348,24 @@ const categoryOptions = computed(() => {
     color: c.color
   }));
 });
+
+const subcategoryOptions = computed(() => {
+  if (!parentCategoryId.value) return [];
+  
+  const subcategories = categoriesStore.getSubcategories(parentCategoryId.value);
+  
+  return subcategories.map(c => ({
+    label: c.name,
+    value: c.id,
+    icon: c.icon,
+    color: c.color
+  }));
+});
+
+function onParentCategoryChange() {
+  // Reset subcategory when parent changes
+  subcategoryId.value = null;
+}
 
 const teamOptions = computed(() => {
   return teamsStore.activeTeams.map(t => ({
@@ -448,7 +498,21 @@ onMounted(async () => {
     if (transaction) {
       amount.value = transaction.amount;
       description.value = transaction.description;
-      categoryId.value = transaction.categoryId;
+      
+      // Load category hierarchy
+      const category = categoriesStore.getCategoryById(transaction.categoryId);
+      if (category) {
+        if (category.parentId) {
+          // It's a subcategory
+          parentCategoryId.value = category.parentId;
+          subcategoryId.value = category.id;
+        } else {
+          // It's a parent category
+          parentCategoryId.value = category.id;
+          subcategoryId.value = null;
+        }
+      }
+      
       date.value = format(new Date(transaction.date), 'yyyy-MM-dd');
       paymentMethod.value = transaction.paymentMethod;
       teamId.value = transaction.teamId || null;

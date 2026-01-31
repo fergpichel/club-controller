@@ -98,44 +98,160 @@ export const mockUsers: User[] = [
   { uid: 'user_003', email: 'tesorero@balonmanxiria.com', displayName: 'Pedro Martínez Silva', role: 'manager', clubId: 'club_xiria_001', createdAt: new Date('2021-09-01'), updatedAt: new Date('2024-01-01') },
   { uid: 'user_004', email: 'entrenador1@balonmanxiria.com', displayName: 'Luis Sánchez Pérez', role: 'employee', clubId: 'club_xiria_001', createdAt: new Date('2022-09-01'), updatedAt: new Date('2024-01-01') },
   { uid: 'user_005', email: 'entrenador2@balonmanxiria.com', displayName: 'Ana Vázquez Torres', role: 'employee', clubId: 'club_xiria_001', createdAt: new Date('2022-09-01'), updatedAt: new Date('2024-01-01') },
-  { uid: 'user_006', email: 'gestoria@asesores.com', displayName: 'Roberto Martínez Puga', role: 'accountant', clubId: 'club_xiria_001', createdAt: new Date('2020-01-15'), updatedAt: new Date('2024-01-01') }
+  { uid: 'user_006', email: 'gestoria@balonmanxiria.com', displayName: 'Roberto Martínez Puga', role: 'accountant', clubId: 'club_xiria_001', createdAt: new Date('2020-01-15'), updatedAt: new Date('2024-01-01') }
 ]
 
-// === CATEGORIES ===
+// === CATEGORIES (con subcategorías) ===
 export const mockCategories: Category[] = [
-  // GASTOS
-  { id: 'cat_001', name: 'Salarios', type: 'expense', icon: 'payments', color: '#E53935', isActive: true },
-  { id: 'cat_002', name: 'Seguridad Social', type: 'expense', icon: 'security', color: '#D81B60', isActive: true },
+  // =====================
+  // GASTOS - CATEGORÍAS PADRE
+  // =====================
+  { id: 'cat_001', name: 'Personal', type: 'expense', icon: 'people', color: '#E53935', isActive: true },
   { id: 'cat_003', name: 'Equipaciones', type: 'expense', icon: 'checkroom', color: '#8E24AA', isActive: true },
   { id: 'cat_004', name: 'Material deportivo', type: 'expense', icon: 'sports_handball', color: '#5E35B1', isActive: true },
   { id: 'cat_005', name: 'Transporte', type: 'expense', icon: 'directions_bus', color: '#3949AB', isActive: true },
-  { id: 'cat_006', name: 'Viajes y desplazamientos', type: 'expense', icon: 'flight', color: '#1E88E5', isActive: true },
-  { id: 'cat_007', name: 'Arbitrajes', type: 'expense', icon: 'sports', color: '#039BE5', isActive: true },
-  { id: 'cat_008', name: 'Federación y licencias', type: 'expense', icon: 'card_membership', color: '#00ACC1', isActive: true },
-  { id: 'cat_009', name: 'Alquiler instalaciones', type: 'expense', icon: 'business', color: '#00897B', isActive: true },
-  { id: 'cat_010', name: 'Suministros', type: 'expense', icon: 'bolt', color: '#43A047', isActive: true },
+  { id: 'cat_007', name: 'Competición', type: 'expense', icon: 'sports', color: '#039BE5', isActive: true },
+  { id: 'cat_009', name: 'Instalaciones', type: 'expense', icon: 'business', color: '#00897B', isActive: true },
   { id: 'cat_011', name: 'Material sanitario', type: 'expense', icon: 'medical_services', color: '#7CB342', isActive: true },
-  { id: 'cat_012', name: 'Seguros', type: 'expense', icon: 'health_and_safety', color: '#C0CA33', isActive: true },
-  { id: 'cat_013', name: 'Marketing y publicidad', type: 'expense', icon: 'campaign', color: '#FDD835', isActive: true },
-  { id: 'cat_014', name: 'Tecnología', type: 'expense', icon: 'computer', color: '#FFB300', isActive: true },
+  { id: 'cat_013', name: 'Marketing y comunicación', type: 'expense', icon: 'campaign', color: '#FDD835', isActive: true },
   { id: 'cat_015', name: 'Cantina', type: 'expense', icon: 'restaurant', color: '#FB8C00', isActive: true },
-  { id: 'cat_016', name: 'Formación', type: 'expense', icon: 'school', color: '#F4511E', isActive: true },
-  { id: 'cat_017', name: 'Gastos administrativos', type: 'expense', icon: 'description', color: '#6D4C41', isActive: true },
-  { id: 'cat_018', name: 'Mantenimiento', type: 'expense', icon: 'build', color: '#757575', isActive: true },
+  { id: 'cat_017', name: 'Administración', type: 'expense', icon: 'description', color: '#6D4C41', isActive: true },
   { id: 'cat_019', name: 'Otros gastos', type: 'expense', icon: 'more_horiz', color: '#546E7A', isActive: true },
-  { id: 'cat_020', name: 'Escuelas de verano (gastos)', type: 'expense', icon: 'wb_sunny', color: '#FF7043', isActive: true },
-  { id: 'cat_021', name: 'Eventos y torneos (gastos)', type: 'expense', icon: 'emoji_events', color: '#EC407A', isActive: true },
-  // INGRESOS
-  { id: 'cat_101', name: 'Cuotas socios', type: 'income', icon: 'group', color: '#00D4AA', isActive: true },
-  { id: 'cat_102', name: 'Inscripciones', type: 'income', icon: 'how_to_reg', color: '#00B894', isActive: true },
+  { id: 'cat_020', name: 'Escuelas de verano', type: 'expense', icon: 'wb_sunny', color: '#FF7043', isActive: true },
+  { id: 'cat_021', name: 'Eventos y torneos', type: 'expense', icon: 'emoji_events', color: '#EC407A', isActive: true },
+  
+  // =====================
+  // GASTOS - SUBCATEGORÍAS
+  // =====================
+  // Personal
+  { id: 'cat_001_01', name: 'Salarios entrenadores', type: 'expense', icon: 'payments', color: '#E53935', parentId: 'cat_001', isActive: true },
+  { id: 'cat_001_02', name: 'Salarios administrativos', type: 'expense', icon: 'payments', color: '#E53935', parentId: 'cat_001', isActive: true },
+  { id: 'cat_001_03', name: 'Seguridad Social', type: 'expense', icon: 'security', color: '#D81B60', parentId: 'cat_001', isActive: true },
+  { id: 'cat_001_04', name: 'Fisioterapia', type: 'expense', icon: 'healing', color: '#E53935', parentId: 'cat_001', isActive: true },
+  { id: 'cat_001_05', name: 'Delegados', type: 'expense', icon: 'badge', color: '#E53935', parentId: 'cat_001', isActive: true },
+  
+  // Equipaciones
+  { id: 'cat_003_01', name: 'Camisetas juego', type: 'expense', icon: 'checkroom', color: '#8E24AA', parentId: 'cat_003', isActive: true },
+  { id: 'cat_003_02', name: 'Pantalones juego', type: 'expense', icon: 'checkroom', color: '#8E24AA', parentId: 'cat_003', isActive: true },
+  { id: 'cat_003_03', name: 'Ropa entrenamiento', type: 'expense', icon: 'dry_cleaning', color: '#8E24AA', parentId: 'cat_003', isActive: true },
+  { id: 'cat_003_04', name: 'Calcetines', type: 'expense', icon: 'checkroom', color: '#8E24AA', parentId: 'cat_003', isActive: true },
+  { id: 'cat_003_05', name: 'Bolsas deportivas', type: 'expense', icon: 'work', color: '#8E24AA', parentId: 'cat_003', isActive: true },
+  { id: 'cat_003_06', name: 'Chandals', type: 'expense', icon: 'dry_cleaning', color: '#8E24AA', parentId: 'cat_003', isActive: true },
+  { id: 'cat_003_07', name: 'Porteros (equipación)', type: 'expense', icon: 'sports_handball', color: '#8E24AA', parentId: 'cat_003', isActive: true },
+  
+  // Material deportivo
+  { id: 'cat_004_01', name: 'Balones', type: 'expense', icon: 'sports_handball', color: '#5E35B1', parentId: 'cat_004', isActive: true },
+  { id: 'cat_004_02', name: 'Conos y material entreno', type: 'expense', icon: 'lightbulb', color: '#5E35B1', parentId: 'cat_004', isActive: true },
+  { id: 'cat_004_03', name: 'Porterías', type: 'expense', icon: 'sports_handball', color: '#5E35B1', parentId: 'cat_004', isActive: true },
+  { id: 'cat_004_04', name: 'Redes', type: 'expense', icon: 'grid_on', color: '#5E35B1', parentId: 'cat_004', isActive: true },
+  { id: 'cat_004_05', name: 'Petos', type: 'expense', icon: 'checkroom', color: '#5E35B1', parentId: 'cat_004', isActive: true },
+  { id: 'cat_004_06', name: 'Resina', type: 'expense', icon: 'water_drop', color: '#5E35B1', parentId: 'cat_004', isActive: true },
+  
+  // Transporte
+  { id: 'cat_005_01', name: 'Autobús partidos', type: 'expense', icon: 'directions_bus', color: '#3949AB', parentId: 'cat_005', isActive: true },
+  { id: 'cat_005_02', name: 'Combustible vehículos club', type: 'expense', icon: 'local_gas_station', color: '#3949AB', parentId: 'cat_005', isActive: true },
+  { id: 'cat_005_03', name: 'Peajes', type: 'expense', icon: 'toll', color: '#3949AB', parentId: 'cat_005', isActive: true },
+  { id: 'cat_005_04', name: 'Alojamiento desplazamientos', type: 'expense', icon: 'hotel', color: '#1E88E5', parentId: 'cat_005', isActive: true },
+  { id: 'cat_005_05', name: 'Dietas desplazamientos', type: 'expense', icon: 'restaurant', color: '#1E88E5', parentId: 'cat_005', isActive: true },
+  
+  // Competición
+  { id: 'cat_007_01', name: 'Arbitrajes', type: 'expense', icon: 'sports', color: '#039BE5', parentId: 'cat_007', isActive: true },
+  { id: 'cat_007_02', name: 'Licencias federativas', type: 'expense', icon: 'card_membership', color: '#00ACC1', parentId: 'cat_007', isActive: true },
+  { id: 'cat_007_03', name: 'Inscripción competiciones', type: 'expense', icon: 'emoji_events', color: '#039BE5', parentId: 'cat_007', isActive: true },
+  { id: 'cat_007_04', name: 'Multas y sanciones', type: 'expense', icon: 'gavel', color: '#039BE5', parentId: 'cat_007', isActive: true },
+  
+  // Instalaciones
+  { id: 'cat_009_01', name: 'Alquiler pabellón', type: 'expense', icon: 'business', color: '#00897B', parentId: 'cat_009', isActive: true },
+  { id: 'cat_009_02', name: 'Electricidad', type: 'expense', icon: 'bolt', color: '#43A047', parentId: 'cat_009', isActive: true },
+  { id: 'cat_009_03', name: 'Agua', type: 'expense', icon: 'water_drop', color: '#43A047', parentId: 'cat_009', isActive: true },
+  { id: 'cat_009_04', name: 'Mantenimiento', type: 'expense', icon: 'build', color: '#757575', parentId: 'cat_009', isActive: true },
+  { id: 'cat_009_05', name: 'Limpieza', type: 'expense', icon: 'cleaning_services', color: '#00897B', parentId: 'cat_009', isActive: true },
+  { id: 'cat_009_06', name: 'Seguros instalaciones', type: 'expense', icon: 'health_and_safety', color: '#C0CA33', parentId: 'cat_009', isActive: true },
+  
+  // Material sanitario
+  { id: 'cat_011_01', name: 'Esparadrapo', type: 'expense', icon: 'medical_services', color: '#7CB342', parentId: 'cat_011', isActive: true },
+  { id: 'cat_011_02', name: 'Vendas', type: 'expense', icon: 'medical_services', color: '#7CB342', parentId: 'cat_011', isActive: true },
+  { id: 'cat_011_03', name: 'Hielo/Frío', type: 'expense', icon: 'ac_unit', color: '#7CB342', parentId: 'cat_011', isActive: true },
+  { id: 'cat_011_04', name: 'Botiquín general', type: 'expense', icon: 'local_pharmacy', color: '#7CB342', parentId: 'cat_011', isActive: true },
+  { id: 'cat_011_05', name: 'Cremas y geles', type: 'expense', icon: 'spa', color: '#7CB342', parentId: 'cat_011', isActive: true },
+  { id: 'cat_011_06', name: 'Material fisioterapia', type: 'expense', icon: 'healing', color: '#7CB342', parentId: 'cat_011', isActive: true },
+  
+  // Marketing
+  { id: 'cat_013_01', name: 'Cartelería', type: 'expense', icon: 'print', color: '#FDD835', parentId: 'cat_013', isActive: true },
+  { id: 'cat_013_02', name: 'Redes sociales', type: 'expense', icon: 'share', color: '#FDD835', parentId: 'cat_013', isActive: true },
+  { id: 'cat_013_03', name: 'Fotografía/Video', type: 'expense', icon: 'camera_alt', color: '#FDD835', parentId: 'cat_013', isActive: true },
+  { id: 'cat_013_04', name: 'Web y hosting', type: 'expense', icon: 'language', color: '#FFB300', parentId: 'cat_013', isActive: true },
+  { id: 'cat_013_05', name: 'Software gestión', type: 'expense', icon: 'computer', color: '#FFB300', parentId: 'cat_013', isActive: true },
+  
+  // Cantina
+  { id: 'cat_015_01', name: 'Bebidas', type: 'expense', icon: 'local_drink', color: '#FB8C00', parentId: 'cat_015', isActive: true },
+  { id: 'cat_015_02', name: 'Comida', type: 'expense', icon: 'fastfood', color: '#FB8C00', parentId: 'cat_015', isActive: true },
+  { id: 'cat_015_03', name: 'Material cantina', type: 'expense', icon: 'kitchen', color: '#FB8C00', parentId: 'cat_015', isActive: true },
+  
+  // Administración
+  { id: 'cat_017_01', name: 'Gestoría', type: 'expense', icon: 'account_balance', color: '#6D4C41', parentId: 'cat_017', isActive: true },
+  { id: 'cat_017_02', name: 'Banco y comisiones', type: 'expense', icon: 'credit_card', color: '#6D4C41', parentId: 'cat_017', isActive: true },
+  { id: 'cat_017_03', name: 'Material oficina', type: 'expense', icon: 'edit', color: '#6D4C41', parentId: 'cat_017', isActive: true },
+  { id: 'cat_017_04', name: 'Formación técnicos', type: 'expense', icon: 'school', color: '#F4511E', parentId: 'cat_017', isActive: true },
+  { id: 'cat_017_05', name: 'Seguro deportivo', type: 'expense', icon: 'health_and_safety', color: '#C0CA33', parentId: 'cat_017', isActive: true },
+  
+  // Escuelas de verano
+  { id: 'cat_020_01', name: 'Monitores campus', type: 'expense', icon: 'person', color: '#FF7043', parentId: 'cat_020', isActive: true },
+  { id: 'cat_020_02', name: 'Material campus', type: 'expense', icon: 'category', color: '#FF7043', parentId: 'cat_020', isActive: true },
+  { id: 'cat_020_03', name: 'Camisetas campus', type: 'expense', icon: 'checkroom', color: '#FF7043', parentId: 'cat_020', isActive: true },
+  { id: 'cat_020_04', name: 'Comidas campus', type: 'expense', icon: 'restaurant', color: '#FF7043', parentId: 'cat_020', isActive: true },
+  
+  // Eventos
+  { id: 'cat_021_01', name: 'Trofeos y medallas', type: 'expense', icon: 'emoji_events', color: '#EC407A', parentId: 'cat_021', isActive: true },
+  { id: 'cat_021_02', name: 'Catering eventos', type: 'expense', icon: 'restaurant', color: '#EC407A', parentId: 'cat_021', isActive: true },
+  { id: 'cat_021_03', name: 'Alquiler material eventos', type: 'expense', icon: 'event_seat', color: '#EC407A', parentId: 'cat_021', isActive: true },
+  
+  // =====================
+  // INGRESOS - CATEGORÍAS PADRE
+  // =====================
+  { id: 'cat_101', name: 'Cuotas', type: 'income', icon: 'group', color: '#00D4AA', isActive: true },
   { id: 'cat_103', name: 'Patrocinios', type: 'income', icon: 'handshake', color: '#635BFF', isActive: true },
   { id: 'cat_104', name: 'Subvenciones', type: 'income', icon: 'account_balance', color: '#5352ED', isActive: true },
-  { id: 'cat_105', name: 'Escuelas deportivas', type: 'income', icon: 'sports', color: '#3742FA', isActive: true },
   { id: 'cat_106', name: 'Eventos y torneos', type: 'income', icon: 'emoji_events', color: '#2ED573', isActive: true },
-  { id: 'cat_107', name: 'Venta merchandising', type: 'income', icon: 'storefront', color: '#1E90FF', isActive: true },
+  { id: 'cat_107', name: 'Merchandising', type: 'income', icon: 'storefront', color: '#1E90FF', isActive: true },
   { id: 'cat_108', name: 'Cantina', type: 'income', icon: 'local_cafe', color: '#FF6B6B', isActive: true },
   { id: 'cat_109', name: 'Campus y stages', type: 'income', icon: 'hiking', color: '#FFA502', isActive: true },
-  { id: 'cat_110', name: 'Otros ingresos', type: 'income', icon: 'attach_money', color: '#747D8C', isActive: true }
+  { id: 'cat_110', name: 'Otros ingresos', type: 'income', icon: 'attach_money', color: '#747D8C', isActive: true },
+  
+  // =====================
+  // INGRESOS - SUBCATEGORÍAS
+  // =====================
+  // Cuotas
+  { id: 'cat_101_01', name: 'Cuotas mensuales', type: 'income', icon: 'payments', color: '#00D4AA', parentId: 'cat_101', isActive: true },
+  { id: 'cat_101_02', name: 'Inscripciones temporada', type: 'income', icon: 'how_to_reg', color: '#00B894', parentId: 'cat_101', isActive: true },
+  { id: 'cat_101_03', name: 'Cuotas atrasadas', type: 'income', icon: 'history', color: '#00D4AA', parentId: 'cat_101', isActive: true },
+  
+  // Patrocinios
+  { id: 'cat_103_01', name: 'Patrocinio principal', type: 'income', icon: 'star', color: '#635BFF', parentId: 'cat_103', isActive: true },
+  { id: 'cat_103_02', name: 'Patrocinio equipos', type: 'income', icon: 'groups', color: '#635BFF', parentId: 'cat_103', isActive: true },
+  { id: 'cat_103_03', name: 'Patrocinio eventos', type: 'income', icon: 'event', color: '#635BFF', parentId: 'cat_103', isActive: true },
+  { id: 'cat_103_04', name: 'Publicidad camisetas', type: 'income', icon: 'checkroom', color: '#635BFF', parentId: 'cat_103', isActive: true },
+  
+  // Subvenciones
+  { id: 'cat_104_01', name: 'Subvención Concello', type: 'income', icon: 'location_city', color: '#5352ED', parentId: 'cat_104', isActive: true },
+  { id: 'cat_104_02', name: 'Subvención Diputación', type: 'income', icon: 'domain', color: '#5352ED', parentId: 'cat_104', isActive: true },
+  { id: 'cat_104_03', name: 'Subvención Xunta', type: 'income', icon: 'account_balance', color: '#5352ED', parentId: 'cat_104', isActive: true },
+  { id: 'cat_104_04', name: 'Otras subvenciones', type: 'income', icon: 'volunteer_activism', color: '#5352ED', parentId: 'cat_104', isActive: true },
+  
+  // Eventos
+  { id: 'cat_106_01', name: 'Inscripciones torneos', type: 'income', icon: 'app_registration', color: '#2ED573', parentId: 'cat_106', isActive: true },
+  { id: 'cat_106_02', name: 'Rifas y sorteos', type: 'income', icon: 'confirmation_number', color: '#2ED573', parentId: 'cat_106', isActive: true },
+  { id: 'cat_106_03', name: 'Entradas partidos', type: 'income', icon: 'local_activity', color: '#2ED573', parentId: 'cat_106', isActive: true },
+  
+  // Merchandising
+  { id: 'cat_107_01', name: 'Camisetas', type: 'income', icon: 'checkroom', color: '#1E90FF', parentId: 'cat_107', isActive: true },
+  { id: 'cat_107_02', name: 'Bufandas y gorros', type: 'income', icon: 'dry_cleaning', color: '#1E90FF', parentId: 'cat_107', isActive: true },
+  { id: 'cat_107_03', name: 'Otros productos', type: 'income', icon: 'shopping_bag', color: '#1E90FF', parentId: 'cat_107', isActive: true },
+  
+  // Campus
+  { id: 'cat_109_01', name: 'Campus verano', type: 'income', icon: 'wb_sunny', color: '#FFA502', parentId: 'cat_109', isActive: true },
+  { id: 'cat_109_02', name: 'Campus Navidad', type: 'income', icon: 'ac_unit', color: '#FFA502', parentId: 'cat_109', isActive: true },
+  { id: 'cat_109_03', name: 'Stages técnicos', type: 'income', icon: 'sports_handball', color: '#FFA502', parentId: 'cat_109', isActive: true }
 ]
 
 // === TEAMS (25 equipos) ===
@@ -344,15 +460,16 @@ function generateTransactions(): Transaction[] {
       const variation = 1 + (Math.random() - 0.5) * 0.1
       const finalAmount = Math.round(amount * variation)
       
+      // Usar subcategorías cuando existan
       const categoryMap: Record<string, { id: string; name: string }> = {
-        cuotas: { id: 'cat_101', name: 'Cuotas socios' },
-        inscripciones: { id: 'cat_102', name: 'Inscripciones' },
-        patrocinios: { id: 'cat_103', name: 'Patrocinios' },
-        subvenciones: { id: 'cat_104', name: 'Subvenciones' },
-        escuelas: { id: 'cat_109', name: 'Campus y stages' },
+        cuotas: { id: 'cat_101_01', name: 'Cuotas mensuales' },
+        inscripciones: { id: 'cat_101_02', name: 'Inscripciones temporada' },
+        patrocinios: { id: 'cat_103_02', name: 'Patrocinio equipos' },
+        subvenciones: { id: 'cat_104_01', name: 'Subvención Concello' },
+        escuelas: { id: 'cat_109_01', name: 'Campus verano' },
         cantina: { id: 'cat_108', name: 'Cantina' },
-        eventos: { id: 'cat_106', name: 'Eventos y torneos' },
-        merchandising: { id: 'cat_107', name: 'Venta merchandising' },
+        eventos: { id: 'cat_106_01', name: 'Inscripciones torneos' },
+        merchandising: { id: 'cat_107_01', name: 'Camisetas' },
         otros: { id: 'cat_110', name: 'Otros ingresos' }
       }
       
@@ -387,26 +504,27 @@ function generateTransactions(): Transaction[] {
       const variation = 1 + (Math.random() - 0.5) * 0.1
       const finalAmount = Math.round(amount * variation)
       
+      // Usar subcategorías cuando existan
       const categoryMap: Record<string, { id: string; name: string }> = {
-        salarios: { id: 'cat_001', name: 'Salarios' },
-        ss: { id: 'cat_002', name: 'Seguridad Social' },
-        equipaciones: { id: 'cat_003', name: 'Equipaciones' },
-        material: { id: 'cat_004', name: 'Material deportivo' },
-        transporte: { id: 'cat_005', name: 'Transporte' },
-        arbitrajes: { id: 'cat_007', name: 'Arbitrajes' },
-        federacion: { id: 'cat_008', name: 'Federación y licencias' },
-        alquiler: { id: 'cat_009', name: 'Alquiler instalaciones' },
-        suministros: { id: 'cat_010', name: 'Suministros' },
-        seguros: { id: 'cat_012', name: 'Seguros' },
-        marketing: { id: 'cat_013', name: 'Marketing y publicidad' },
-        tecnologia: { id: 'cat_014', name: 'Tecnología' },
-        cantina: { id: 'cat_015', name: 'Cantina' },
-        sanitario: { id: 'cat_011', name: 'Material sanitario' },
-        formacion: { id: 'cat_016', name: 'Formación' },
-        mantenimiento: { id: 'cat_018', name: 'Mantenimiento' },
-        admin: { id: 'cat_017', name: 'Gastos administrativos' },
-        eventosG: { id: 'cat_021', name: 'Eventos y torneos (gastos)' },
-        escuelasG: { id: 'cat_020', name: 'Escuelas de verano (gastos)' },
+        salarios: { id: 'cat_001_01', name: 'Salarios entrenadores' },
+        ss: { id: 'cat_001_03', name: 'Seguridad Social' },
+        equipaciones: { id: 'cat_003_01', name: 'Camisetas juego' },
+        material: { id: 'cat_004_01', name: 'Balones' },
+        transporte: { id: 'cat_005_01', name: 'Autobús partidos' },
+        arbitrajes: { id: 'cat_007_01', name: 'Arbitrajes' },
+        federacion: { id: 'cat_007_02', name: 'Licencias federativas' },
+        alquiler: { id: 'cat_009_01', name: 'Alquiler pabellón' },
+        suministros: { id: 'cat_009_02', name: 'Electricidad' },
+        seguros: { id: 'cat_017_05', name: 'Seguro deportivo' },
+        marketing: { id: 'cat_013_01', name: 'Cartelería' },
+        tecnologia: { id: 'cat_013_05', name: 'Software gestión' },
+        cantina: { id: 'cat_015_01', name: 'Bebidas' },
+        sanitario: { id: 'cat_011_01', name: 'Esparadrapo' },
+        formacion: { id: 'cat_017_04', name: 'Formación técnicos' },
+        mantenimiento: { id: 'cat_009_04', name: 'Mantenimiento' },
+        admin: { id: 'cat_017_01', name: 'Gestoría' },
+        eventosG: { id: 'cat_021_01', name: 'Trofeos y medallas' },
+        escuelasG: { id: 'cat_020_01', name: 'Monitores campus' },
         otros: { id: 'cat_019', name: 'Otros gastos' }
       }
       
@@ -495,8 +613,8 @@ function generateTransactions(): Transaction[] {
           type: 'income',
           amount: team.players * team.fee,
           description: `Cuotas ${team.name} - ${txnMonthNum}/${txnMonth}`,
-          categoryId: 'cat_101',
-          categoryName: 'Cuotas socios',
+          categoryId: 'cat_101_01',
+          categoryName: 'Cuotas mensuales',
           teamId: team.teamId,
           teamName: team.name,
           date: new Date(txnMonth, txnMonthNum - 1, 5),
@@ -537,8 +655,8 @@ function generateTransactions(): Transaction[] {
       type: 'income',
       amount: sa.amount,
       description: `Patrocinio ${sa.sponsor} - Temporada 2024-25`,
-      categoryId: 'cat_104',
-      categoryName: 'Patrocinios',
+      categoryId: 'cat_103_02',
+      categoryName: 'Patrocinio equipos',
       // Si tiene múltiples equipos, usar allocations; si no, teamId simple
       teamId: hasMultipleTeams ? undefined : sa.teams[0].id,
       teamName: hasMultipleTeams ? undefined : sa.teams[0].name,
@@ -566,8 +684,8 @@ function generateTransactions(): Transaction[] {
       type: 'expense',
       amount: team.players * 55, // ~55€ por jugador en equipación
       description: `Equipaciones ${team.name} - Temporada`,
-      categoryId: 'cat_003',
-      categoryName: 'Equipaciones',
+      categoryId: 'cat_003_01',
+      categoryName: 'Camisetas juego',
       teamId: team.teamId,
       teamName: team.name,
       date: new Date(2024, 7, 20), // Agosto 2024
@@ -593,8 +711,8 @@ function generateTransactions(): Transaction[] {
           type: 'expense',
           amount: 180 + Math.random() * 120, // 180-300€ desplazamiento
           description: `Desplazamiento ${team.name} - Jornada ${m + 1}`,
-          categoryId: 'cat_005',
-          categoryName: 'Transporte',
+          categoryId: 'cat_005_01',
+          categoryName: 'Autobús partidos',
           teamId: team.teamId,
           teamName: team.name,
           date: new Date(year, monthNum - 1, 15 + Math.floor(Math.random() * 10)),
@@ -611,9 +729,9 @@ function generateTransactions(): Transaction[] {
   
   // Añadir transacciones pendientes para el mes actual
   const pendingTxns = [
-    { desc: 'Factura arbitrajes pendiente', cat: 'cat_007', catName: 'Arbitrajes', amount: 450, type: 'expense' as const },
-    { desc: 'Desplazamiento Cadete - Ferrol', cat: 'cat_005', catName: 'Transporte', amount: 280, type: 'expense' as const, team: 'team_005' },
-    { desc: 'Cuota pendiente familia García', cat: 'cat_101', catName: 'Cuotas socios', amount: 35, type: 'income' as const }
+    { desc: 'Factura arbitrajes pendiente', cat: 'cat_007_01', catName: 'Arbitrajes', amount: 450, type: 'expense' as const },
+    { desc: 'Desplazamiento Cadete - Ferrol', cat: 'cat_005_01', catName: 'Autobús partidos', amount: 280, type: 'expense' as const, team: 'team_005' },
+    { desc: 'Cuota pendiente familia García', cat: 'cat_101_03', catName: 'Cuotas atrasadas', amount: 35, type: 'income' as const }
   ]
   
   pendingTxns.forEach((p, idx) => {
@@ -635,6 +753,50 @@ function generateTransactions(): Transaction[] {
       updatedAt: new Date(currentYear, currentMonth - 1, 18 + idx)
     })
   })
+  
+  // Añadir transacciones detalladas de MATERIAL SANITARIO para demostrar subcategorías
+  const sanitarioDetails = [
+    { sub: 'cat_011_01', name: 'Esparadrapo', desc: 'Esparadrapo Galeno 5cm x 10m (20 rollos)', amount: 65 },
+    { sub: 'cat_011_01', name: 'Esparadrapo', desc: 'Esparadrapo sport tape blanco (15 rollos)', amount: 48 },
+    { sub: 'cat_011_02', name: 'Vendas', desc: 'Vendas elásticas cohesivas', amount: 35 },
+    { sub: 'cat_011_03', name: 'Hielo/Frío', desc: 'Bolsas frío instantáneo (caja 24u)', amount: 42 },
+    { sub: 'cat_011_03', name: 'Hielo/Frío', desc: 'Spray frío deportivo', amount: 18 },
+    { sub: 'cat_011_04', name: 'Botiquín general', desc: 'Reposición botiquín (tiritas, gasas, etc)', amount: 25 },
+    { sub: 'cat_011_05', name: 'Cremas y geles', desc: 'Gel antiinflamatorio Fisiocrem', amount: 32 },
+    { sub: 'cat_011_05', name: 'Cremas y geles', desc: 'Crema calentamiento muscular', amount: 28 }
+  ]
+  
+  // Generar gastos sanitarios para varios meses
+  for (let m = 0; m < 6; m++) {
+    const monthNum = m < 4 ? 9 + m : m - 3 // Sep-Dic, Ene-Feb
+    const year = monthNum > 8 ? 2024 : 2025
+    
+    if (new Date(year, monthNum - 1, 1) <= new Date()) {
+      // Seleccionar aleatoriamente algunos gastos sanitarios del mes
+      const monthSanitario = sanitarioDetails.filter(() => Math.random() > 0.4)
+      
+      monthSanitario.forEach((item, idx) => {
+        const variation = 1 + (Math.random() - 0.5) * 0.2 // ±10%
+        transactions.push({
+          id: `txn_${String(txnId++).padStart(5, '0')}`,
+          clubId: 'club_xiria_001',
+          type: 'expense',
+          amount: Math.round(item.amount * variation),
+          description: item.desc,
+          categoryId: item.sub,
+          categoryName: item.name,
+          teamId: Math.random() > 0.5 ? `team_00${1 + Math.floor(Math.random() * 6)}` : undefined,
+          date: new Date(year, monthNum - 1, 10 + idx * 3),
+          paymentMethod: 'card',
+          status: 'paid',
+          createdBy: 'user_003',
+          createdByName: 'Pedro Martínez Silva',
+          createdAt: new Date(year, monthNum - 1, 8 + idx * 3),
+          updatedAt: new Date(year, monthNum - 1, 10 + idx * 3)
+        })
+      })
+    }
+  }
   
   return transactions
 }

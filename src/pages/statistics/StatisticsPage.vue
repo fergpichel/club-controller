@@ -108,10 +108,33 @@
             <q-card-section>
               <div class="row items-center justify-between q-mb-md">
                 <h3 class="section-title">Ingresos por categoría</h3>
-                <q-btn flat dense color="primary" label="Ver detalle" :to="{ name: 'income' }" />
+                <q-btn flat dense color="primary" label="Ver transacciones" :to="{ name: 'income' }" />
               </div>
-              <div class="chart-container-small">
-                <Doughnut v-if="incomeCategoryChart" :data="incomeCategoryChart" :options="doughnutOptions" />
+              <!-- Category list with all categories -->
+              <div v-if="incomeByCategory.length > 0" class="category-list-container">
+                <div
+                  v-for="cat in incomeByCategory"
+                  :key="cat.categoryId"
+                  class="category-row"
+                  @click="$router.push({ name: 'category-stats', params: { id: cat.categoryId } })"
+                >
+                  <div class="category-row-left">
+                    <q-icon :name="getCategoryIcon(cat.categoryId)" :style="{ color: getCategoryColor(cat.categoryId) }" size="20px" />
+                    <span class="category-name">{{ cat.categoryName }}</span>
+                  </div>
+                  <div class="category-row-right">
+                    <span class="category-amount text-positive">{{ formatCurrency(cat.total) }}</span>
+                    <div class="category-bar">
+                      <div 
+                        class="category-bar-fill income"
+                        :style="{ width: `${cat.percentage}%` }"
+                      ></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div v-else class="text-center text-grey-6 q-pa-md">
+                Sin ingresos en este período
               </div>
             </q-card-section>
           </q-card>
@@ -123,10 +146,33 @@
             <q-card-section>
               <div class="row items-center justify-between q-mb-md">
                 <h3 class="section-title">Gastos por categoría</h3>
-                <q-btn flat dense color="primary" label="Ver detalle" :to="{ name: 'expenses' }" />
+                <q-btn flat dense color="primary" label="Ver transacciones" :to="{ name: 'expenses' }" />
               </div>
-              <div class="chart-container-small">
-                <Doughnut v-if="expenseCategoryChart" :data="expenseCategoryChart" :options="doughnutOptions" />
+              <!-- Category list with all categories -->
+              <div v-if="expensesByCategory.length > 0" class="category-list-container">
+                <div
+                  v-for="cat in expensesByCategory"
+                  :key="cat.categoryId"
+                  class="category-row"
+                  @click="$router.push({ name: 'category-stats', params: { id: cat.categoryId } })"
+                >
+                  <div class="category-row-left">
+                    <q-icon :name="getCategoryIcon(cat.categoryId)" :style="{ color: getCategoryColor(cat.categoryId) }" size="20px" />
+                    <span class="category-name">{{ cat.categoryName }}</span>
+                  </div>
+                  <div class="category-row-right">
+                    <span class="category-amount text-negative">{{ formatCurrency(cat.total) }}</span>
+                    <div class="category-bar">
+                      <div 
+                        class="category-bar-fill expense"
+                        :style="{ width: `${cat.percentage}%` }"
+                      ></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div v-else class="text-center text-grey-6 q-pa-md">
+                Sin gastos en este período
               </div>
             </q-card-section>
           </q-card>
@@ -217,16 +263,16 @@ import {
   PointElement,
   LineElement,
   BarElement,
-  ArcElement,
   Title,
   Tooltip,
   Legend,
   Filler
 } from 'chart.js';
-import { Line, Bar, Doughnut } from 'vue-chartjs';
+import { Line, Bar } from 'vue-chartjs';
 import { useStatisticsStore } from 'src/stores/statistics';
 import { useTransactionsStore } from 'src/stores/transactions';
 import { useTeamsStore } from 'src/stores/teams';
+import { useCategoriesStore } from 'src/stores/categories';
 
 ChartJS.register(
   CategoryScale,
@@ -234,7 +280,6 @@ ChartJS.register(
   PointElement,
   LineElement,
   BarElement,
-  ArcElement,
   Title,
   Tooltip,
   Legend,
@@ -244,6 +289,7 @@ ChartJS.register(
 const statisticsStore = useStatisticsStore();
 const transactionsStore = useTransactionsStore();
 const teamsStore = useTeamsStore();
+const categoriesStore = useCategoriesStore();
 
 // State
 const viewPeriod = ref<'month' | 'year'>('month');
@@ -326,33 +372,20 @@ const balanceChartData = computed(() => {
   };
 });
 
-const incomeCategoryChart = computed(() => {
-  const data = statisticsStore.incomeCategoryStats;
-  if (!data.length) return null;
+// Category lists for clickable navigation
+const incomeByCategory = computed(() => statisticsStore.incomeCategoryStats);
+const expensesByCategory = computed(() => statisticsStore.expenseCategoryStats);
 
-  return {
-    labels: data.slice(0, 6).map(d => d.categoryName),
-    datasets: [{
-      data: data.slice(0, 6).map(d => d.total),
-      backgroundColor: ['#4CAF50', '#2196F3', '#9C27B0', '#FF9800', '#E91E63', '#00BCD4'],
-      borderWidth: 0
-    }]
-  };
-});
+// Category helpers
+function getCategoryIcon(categoryId: string): string {
+  const category = categoriesStore.getCategoryById(categoryId);
+  return category?.icon || 'category';
+}
 
-const expenseCategoryChart = computed(() => {
-  const data = statisticsStore.expenseCategoryStats;
-  if (!data.length) return null;
-
-  return {
-    labels: data.slice(0, 6).map(d => d.categoryName),
-    datasets: [{
-      data: data.slice(0, 6).map(d => d.total),
-      backgroundColor: ['#F44336', '#FF9800', '#2196F3', '#9C27B0', '#795548', '#607D8B'],
-      borderWidth: 0
-    }]
-  };
-});
+function getCategoryColor(categoryId: string): string {
+  const category = categoriesStore.getCategoryById(categoryId);
+  return category?.color || '#9E9E9E';
+}
 
 // Team and project stats
 const teamStats = computed(() => {
@@ -416,18 +449,6 @@ const barChartOptions = {
       ticks: { callback: (value: number) => formatCurrency(value) }
     }
   }
-};
-
-const doughnutOptions = {
-  responsive: true,
-  maintainAspectRatio: false,
-  plugins: {
-    legend: {
-      position: 'bottom' as const,
-      labels: { boxWidth: 12, padding: 8 }
-    }
-  },
-  cutout: '60%'
 };
 
 // Methods
@@ -571,5 +592,81 @@ onMounted(async () => {
   font-family: 'Space Grotesk', sans-serif;
   font-size: 0.85rem;
   font-weight: 600;
+}
+
+.category-list-container {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.category-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  background: var(--color-bg-tertiary);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all var(--duration-fast) var(--ease-out);
+  
+  &:hover {
+    background: var(--color-bg-secondary);
+    transform: translateX(4px);
+  }
+}
+
+.category-row-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+  
+  .category-name {
+    font-size: 0.875rem;
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}
+
+.category-row-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  min-width: 100px;
+  
+  .category-amount {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 0.875rem;
+    font-weight: 600;
+  }
+}
+
+.category-bar {
+  width: 80px;
+  height: 4px;
+  background: var(--color-border-light);
+  border-radius: 2px;
+  overflow: hidden;
+  
+  .category-bar-fill {
+    height: 100%;
+    border-radius: 2px;
+    transition: width var(--duration-normal) var(--ease-out);
+    
+    &.income {
+      background: var(--q-positive);
+    }
+    
+    &.expense {
+      background: var(--q-negative);
+    }
+  }
 }
 </style>

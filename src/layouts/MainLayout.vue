@@ -24,9 +24,9 @@
         <q-space />
 
         <!-- Search -->
-        <div v-if="$q.screen.gt.sm" class="header-search">
+        <div v-if="$q.screen.gt.sm" class="header-search" @click="showSearchDialog = true">
           <q-icon name="search" size="18px" />
-          <input v-model="searchQuery" type="text" placeholder="Buscar transacciones..." />
+          <span class="search-placeholder">Buscar transacciones...</span>
           <kbd>⌘K</kbd>
         </div>
 
@@ -228,6 +228,93 @@
         </q-card-section>
       </q-card>
     </q-dialog>
+
+    <!-- Search Dialog -->
+    <q-dialog v-model="showSearchDialog" position="top" class="search-dialog">
+      <q-card class="search-card">
+        <q-card-section class="search-input-section">
+          <q-icon name="search" size="24px" class="search-icon" />
+          <input
+            ref="searchInputRef"
+            v-model="searchQuery"
+            type="text"
+            placeholder="Buscar por descripción, categoría, equipo..."
+            class="search-input"
+            @keydown.esc="showSearchDialog = false"
+            @keydown.enter="goToSelectedResult"
+            @keydown.down.prevent="selectNextResult"
+            @keydown.up.prevent="selectPrevResult"
+          />
+          <q-btn v-if="searchQuery" flat round dense icon="close" size="sm" @click="searchQuery = ''" />
+        </q-card-section>
+        
+        <q-separator />
+        
+        <q-card-section class="search-results-section">
+          <div v-if="searchLoading" class="search-loading">
+            <q-spinner-dots size="32px" color="primary" />
+            <span>Cargando transacciones...</span>
+          </div>
+          
+          <div v-else-if="searchQuery.length < 2" class="search-hint">
+            <q-icon name="lightbulb" size="20px" />
+            <span>Escribe al menos 2 caracteres para buscar</span>
+          </div>
+          
+          <div v-else-if="searchResults.length === 0" class="search-empty">
+            <q-icon name="search_off" size="32px" />
+            <span>No se encontraron resultados para "{{ searchQuery }}"</span>
+          </div>
+          
+          <div v-else class="search-results">
+            <p class="results-count">{{ searchResults.length }} resultado{{ searchResults.length !== 1 ? 's' : '' }}</p>
+            <q-list>
+              <q-item
+                v-for="(result, index) in searchResults.slice(0, 10)"
+                :key="result.id"
+                clickable
+                :class="{ 'result-selected': index === selectedResultIndex }"
+                @click="goToTransaction(result.id)"
+              >
+                <q-item-section avatar>
+                  <q-avatar
+                    :color="result.type === 'income' ? 'positive' : 'negative'"
+                    text-color="white"
+                    size="36px"
+                  >
+                    <q-icon :name="result.type === 'income' ? 'trending_up' : 'trending_down'" size="18px" />
+                  </q-avatar>
+                </q-item-section>
+                <q-item-section>
+                  <q-item-label>{{ result.description }}</q-item-label>
+                  <q-item-label caption>
+                    {{ result.categoryName }} · {{ formatDate(result.date) }}
+                  </q-item-label>
+                </q-item-section>
+                <q-item-section side>
+                  <q-item-label :class="result.type === 'income' ? 'text-positive' : 'text-negative'">
+                    {{ result.type === 'income' ? '+' : '-' }}{{ formatCurrency(result.amount) }}
+                  </q-item-label>
+                </q-item-section>
+              </q-item>
+            </q-list>
+            <p v-if="searchResults.length > 10" class="results-more">
+              Y {{ searchResults.length - 10 }} más...
+            </p>
+          </div>
+        </q-card-section>
+        
+        <q-separator />
+        
+        <q-card-section class="search-footer">
+          <div class="search-shortcuts">
+            <span><kbd>↑</kbd><kbd>↓</kbd> Navegar</span>
+            <span><kbd>↵</kbd> Abrir</span>
+            <span><kbd>Esc</kbd> Cerrar</span>
+          </div>
+        </q-card-section>
+      </q-card>
+    </q-dialog>
   </q-layout>
 </template>
 
@@ -252,7 +339,12 @@ const teamsStore = useTeamsStore()
 const leftDrawerOpen = ref(true)  // Default to open for desktop
 const miniState = ref(false)
 const showQuickAdd = ref(false)
+const showSearchDialog = ref(false)
 const searchQuery = ref('')
+const selectedResultIndex = ref(0)
+const searchInputRef = ref<HTMLInputElement | null>(null)
+const allTransactionsLoaded = ref(false)
+const searchLoading = ref(false)
 const scrolled = ref(false)
 const fabHidden = ref(false)
 
@@ -299,6 +391,105 @@ const userInitials = computed(() => {
 
 const pendingCount = computed(() => transactionsStore.pendingTransactions.length)
 
+// Search functionality
+const searchResults = computed(() => {
+  if (searchQuery.value.length < 2) return []
+  
+  const query = searchQuery.value.toLowerCase()
+  
+  return transactionsStore.transactions
+    .filter(t => {
+      // Search in description
+      if (t.description.toLowerCase().includes(query)) return true
+      
+      // Search in category name
+      const category = categoriesStore.getCategoryById(t.categoryId)
+      if (category?.name.toLowerCase().includes(query)) return true
+      
+      // Search in team name
+      if (t.teamId) {
+        const team = teamsStore.getTeamById(t.teamId)
+        if (team?.name.toLowerCase().includes(query)) return true
+      }
+      
+      // Search in amount (as string)
+      if (t.amount.toString().includes(query)) return true
+      
+      return false
+    })
+    .map(t => ({
+      ...t,
+      categoryName: categoriesStore.getCategoryById(t.categoryId)?.name || 'Sin categoría',
+      teamName: t.teamId ? teamsStore.getTeamById(t.teamId)?.name : undefined
+    }))
+    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+})
+
+// Watch for search dialog open to focus input and load transactions
+watch(showSearchDialog, async (newVal) => {
+  if (newVal) {
+    // Always load all transactions for search (if not already done)
+    if (!allTransactionsLoaded.value) {
+      searchLoading.value = true
+      await transactionsStore.fetchTransactions({})
+      allTransactionsLoaded.value = true
+      searchLoading.value = false
+    }
+    setTimeout(() => {
+      searchInputRef.value?.focus()
+    }, 100)
+  } else {
+    searchQuery.value = ''
+    selectedResultIndex.value = 0
+  }
+})
+
+// Watch search query to reset selected index
+watch(searchQuery, () => {
+  selectedResultIndex.value = 0
+})
+
+// Keyboard shortcut for search
+function handleKeyboardShortcut(e: KeyboardEvent) {
+  if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+    e.preventDefault()
+    showSearchDialog.value = true
+  }
+}
+
+function formatDate(date: string | Date): string {
+  const d = new Date(date)
+  return d.toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' })
+}
+
+function formatCurrency(amount: number): string {
+  return new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(amount)
+}
+
+function goToTransaction(id: string) {
+  showSearchDialog.value = false
+  router.push({ name: 'transaction-detail', params: { id } })
+}
+
+function goToSelectedResult() {
+  if (searchResults.value.length > 0 && selectedResultIndex.value < searchResults.value.length) {
+    goToTransaction(searchResults.value[selectedResultIndex.value].id)
+  }
+}
+
+function selectNextResult() {
+  const maxIndex = Math.min(searchResults.value.length - 1, 9)
+  if (selectedResultIndex.value < maxIndex) {
+    selectedResultIndex.value++
+  }
+}
+
+function selectPrevResult() {
+  if (selectedResultIndex.value > 0) {
+    selectedResultIndex.value--
+  }
+}
+
 // Methods
 function toggleLeftDrawer() {
   leftDrawerOpen.value = !leftDrawerOpen.value
@@ -341,6 +532,7 @@ onMounted(async () => {
   if (savedDarkMode !== null) $q.dark.set(savedDarkMode === 'true')
 
   window.addEventListener('scroll', handleScroll, { passive: true })
+  window.addEventListener('keydown', handleKeyboardShortcut)
 
   if (authStore.clubId) {
     await Promise.all([
@@ -353,6 +545,7 @@ onMounted(async () => {
 
 onUnmounted(() => {
   window.removeEventListener('scroll', handleScroll)
+  window.removeEventListener('keydown', handleKeyboardShortcut)
 })
 </script>
 
@@ -755,5 +948,148 @@ onUnmounted(() => {
 .fab-scale-leave-to {
   opacity: 0;
   transform: scale(0.5);
+}
+
+// === SEARCH DIALOG ===
+.header-search {
+  cursor: pointer;
+  
+  .search-placeholder {
+    flex: 1;
+    font-size: 0.875rem;
+    color: var(--color-text-muted);
+  }
+}
+
+.search-card {
+  width: 100%;
+  max-width: 560px;
+  margin-top: var(--space-4);
+  border-radius: var(--radius-xl) !important;
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border-light);
+  box-shadow: var(--shadow-xl);
+}
+
+.search-input-section {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-5);
+  
+  .search-icon {
+    color: var(--color-text-tertiary);
+  }
+  
+  .search-input {
+    flex: 1;
+    border: none;
+    background: transparent;
+    font-size: 1.0625rem;
+    font-family: inherit;
+    color: var(--color-text-primary);
+    outline: none;
+    
+    &::placeholder {
+      color: var(--color-text-muted);
+    }
+  }
+}
+
+.search-results-section {
+  max-height: 400px;
+  overflow-y: auto;
+  padding: 0;
+}
+
+.search-hint,
+.search-empty,
+.search-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: var(--space-8);
+  text-align: center;
+  color: var(--color-text-tertiary);
+  
+  .q-icon {
+    opacity: 0.5;
+  }
+}
+
+.search-results {
+  .results-count {
+    padding: var(--space-3) var(--space-5);
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--color-text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  
+  .q-item {
+    padding: var(--space-3) var(--space-5);
+    transition: background var(--duration-fast) var(--ease-out);
+    
+    &:hover,
+    &.result-selected {
+      background: var(--color-bg-tertiary);
+    }
+    
+    .q-item__label {
+      font-weight: 500;
+    }
+    
+    .q-item__label--caption {
+      font-size: 0.8125rem;
+      color: var(--color-text-tertiary);
+    }
+  }
+  
+  .results-more {
+    padding: var(--space-3) var(--space-5);
+    text-align: center;
+    font-size: 0.8125rem;
+    color: var(--color-text-tertiary);
+  }
+}
+
+.search-footer {
+  padding: var(--space-3) var(--space-5);
+  background: var(--color-bg-tertiary);
+  border-radius: 0 0 var(--radius-xl) var(--radius-xl);
+}
+
+.search-shortcuts {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-6);
+  
+  span {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-size: 0.75rem;
+    color: var(--color-text-tertiary);
+  }
+  
+  kbd {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 22px;
+    height: 22px;
+    font-family: inherit;
+    font-size: 0.6875rem;
+    font-weight: 500;
+    color: var(--color-text-secondary);
+    background: var(--color-bg-elevated);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    padding: 0 6px;
+  }
 }
 </style>

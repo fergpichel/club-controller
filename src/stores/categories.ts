@@ -51,7 +51,7 @@ export const useCategoriesStore = defineStore('categories', () => {
   const loading = ref(false)
   const error = ref<string | null>(null)
 
-  // Getters
+  // Getters - Basic
   const incomeCategories = computed(() =>
     categories.value.filter(c => c.type === 'income' && c.isActive)
   )
@@ -62,6 +62,25 @@ export const useCategoriesStore = defineStore('categories', () => {
 
   const allActiveCategories = computed(() =>
     categories.value.filter(c => c.isActive)
+  )
+
+  // Getters - Hierarchy
+  // Categorías padre (sin parentId)
+  const parentCategories = computed(() =>
+    categories.value.filter(c => !c.parentId && c.isActive)
+  )
+
+  const incomeParentCategories = computed(() =>
+    categories.value.filter(c => c.type === 'income' && !c.parentId && c.isActive)
+  )
+
+  const expenseParentCategories = computed(() =>
+    categories.value.filter(c => c.type === 'expense' && !c.parentId && c.isActive)
+  )
+
+  // Subcategorías (con parentId)
+  const subcategories = computed(() =>
+    categories.value.filter(c => c.parentId && c.isActive)
   )
 
   // Actions
@@ -235,16 +254,76 @@ export const useCategoriesStore = defineStore('categories', () => {
     return categories.value.filter(c => c.type === type && c.isActive)
   }
 
+  // Hierarchy helpers
+  function getSubcategories(parentId: string) {
+    return categories.value.filter(c => c.parentId === parentId && c.isActive)
+  }
+
+  function hasSubcategories(categoryId: string) {
+    return categories.value.some(c => c.parentId === categoryId && c.isActive)
+  }
+
+  function getParentCategory(categoryId: string) {
+    const category = getCategoryById(categoryId)
+    if (!category?.parentId) return null
+    return getCategoryById(category.parentId)
+  }
+
+  function isSubcategory(categoryId: string) {
+    const category = getCategoryById(categoryId)
+    return !!category?.parentId
+  }
+
+  // Obtener categoría con información del padre
+  function getCategoryWithParent(categoryId: string) {
+    const category = getCategoryById(categoryId)
+    if (!category) return null
+    
+    const parent = category.parentId ? getCategoryById(category.parentId) : null
+    
+    return {
+      ...category,
+      parent,
+      fullName: parent ? `${parent.name} > ${category.name}` : category.name
+    }
+  }
+
+  // Obtener todas las categorías padre con sus subcategorías agrupadas
+  function getCategoriesTree(type?: CategoryType) {
+    const parents = type 
+      ? parentCategories.value.filter(c => c.type === type)
+      : parentCategories.value
+
+    return parents.map(parent => ({
+      ...parent,
+      subcategories: getSubcategories(parent.id)
+    }))
+  }
+
+  // Para estadísticas: obtener el total de una categoría padre (suma de sus subcategorías)
+  function getAllCategoryIds(categoryId: string): string[] {
+    const ids = [categoryId]
+    const subs = getSubcategories(categoryId)
+    subs.forEach(sub => ids.push(sub.id))
+    return ids
+  }
+
   return {
     // State
     categories,
     loading,
     error,
 
-    // Getters
+    // Getters - Basic
     incomeCategories,
     expenseCategories,
     allActiveCategories,
+
+    // Getters - Hierarchy
+    parentCategories,
+    incomeParentCategories,
+    expenseParentCategories,
+    subcategories,
 
     // Actions
     fetchCategories,
@@ -252,6 +331,15 @@ export const useCategoriesStore = defineStore('categories', () => {
     updateCategory,
     deleteCategory,
     getCategoryById,
-    getCategoriesByType
+    getCategoriesByType,
+
+    // Hierarchy helpers
+    getSubcategories,
+    hasSubcategories,
+    getParentCategory,
+    isSubcategory,
+    getCategoryWithParent,
+    getCategoriesTree,
+    getAllCategoryIds
   }
 })
