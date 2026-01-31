@@ -1,0 +1,551 @@
+// === USER & AUTH TYPES ===
+export type UserRole = 'admin' | 'manager' | 'employee' | 'accountant'
+
+export interface User {
+  uid: string
+  email: string
+  displayName: string
+  photoURL?: string
+  role: UserRole
+  clubId: string
+  createdAt: Date
+  updatedAt: Date
+}
+
+export interface Club {
+  id: string
+  name: string
+  logo?: string
+  address?: string
+  phone?: string
+  email?: string
+  taxId?: string
+  sport: string
+  createdAt: Date
+  settings: ClubSettings
+}
+
+export interface ClubSettings {
+  currency: string
+  fiscalYearStart: number // month 1-12
+  categories: Category[]
+  defaultTeams: string[]
+}
+
+// === CATEGORIES ===
+export type CategoryType = 'income' | 'expense'
+
+export interface Category {
+  id: string
+  name: string
+  type: CategoryType
+  icon: string
+  color: string
+  parentId?: string
+  isActive: boolean
+}
+
+// === TEAMS ===
+export type TeamGender = 'male' | 'female' | 'mixed'
+export type AgeGroup = 'biberon' | 'prebenjamin' | 'benjamin' | 'alevin' | 'infantil' | 'cadete' | 'juvenil' | 'senior'
+
+export interface Team {
+  id: string
+  clubId: string
+  name: string // Nombre comercial/patrocinador (ej: "Calvo Xiria")
+  sport: string
+  ageGroup: AgeGroup
+  gender: TeamGender
+  color: string
+  coachId?: string // employeeId
+  playersCount?: number
+  isActive: boolean
+  createdAt: Date
+}
+
+// === PROJECTS ===
+export interface Project {
+  id: string
+  clubId: string
+  name: string
+  description?: string
+  startDate: Date
+  endDate?: Date
+  budget?: number
+  status: 'active' | 'completed' | 'cancelled'
+  teamIds?: string[]
+  managerId?: string // employeeId
+  createdAt: Date
+}
+
+// === EVENTS ===
+export interface Event {
+  id: string
+  clubId: string
+  name: string
+  description?: string
+  date: Date
+  endDate?: Date
+  location?: string
+  budget?: number
+  projectId?: string
+  teamIds?: string[]
+  status: 'planned' | 'ongoing' | 'completed' | 'cancelled'
+  createdAt: Date
+}
+
+// === SUPPLIERS (Proveedores) ===
+export interface Supplier {
+  id: string
+  clubId: string
+  name: string
+  taxId?: string // CIF/NIF
+  email?: string
+  phone?: string
+  address?: string
+  contactPerson?: string
+  category?: string // Tipo de proveedor
+  bankAccount?: string
+  notes?: string
+  isActive: boolean
+  createdAt: Date
+  updatedAt: Date
+}
+
+// === SPONSORS (Patrocinadores) ===
+export type SponsorType = 'main' | 'official' | 'team' | 'event' | 'equipment'
+
+export interface Sponsor {
+  id: string
+  clubId: string
+  name: string
+  logo?: string
+  type: SponsorType
+  contactPerson?: string
+  email?: string
+  phone?: string
+  website?: string
+  // Vinculaciones
+  teamIds?: string[] // Equipos patrocinados
+  projectIds?: string[]
+  // Contrato
+  contractStart?: Date
+  contractEnd?: Date
+  annualAmount?: number
+  notes?: string
+  isActive: boolean
+  createdAt: Date
+  updatedAt: Date
+}
+
+// === EMPLOYEES (Empleados) ===
+export type EmployeeType = 'coach' | 'staff' | 'admin' | 'physio' | 'delegate'
+export type ContractType = 'full_time' | 'part_time' | 'freelance' | 'volunteer'
+
+export interface Employee {
+  id: string
+  clubId: string
+  userId?: string // Si tiene cuenta de usuario
+  name: string
+  email?: string
+  phone?: string
+  type: EmployeeType
+  contractType: ContractType
+  // Salario
+  monthlySalary?: number
+  hourlyRate?: number
+  // Asignaciones
+  teamIds?: string[] // Equipos donde trabaja
+  projectIds?: string[] // Proyectos asignados
+  // Datos adicionales
+  startDate: Date
+  endDate?: Date
+  ssNumber?: string // Número SS
+  bankAccount?: string
+  notes?: string
+  isActive: boolean
+  createdAt: Date
+  updatedAt: Date
+}
+
+// === ALLOCATIONS (Asignaciones porcentuales) ===
+export interface Allocation {
+  teamId?: string
+  teamName?: string
+  projectId?: string
+  projectName?: string
+  eventId?: string
+  eventName?: string
+  percentage: number // 0-100
+  amount?: number // Calculated: transaction.amount * percentage / 100
+}
+
+// === TRANSACTIONS ===
+export type TransactionType = 'income' | 'expense'
+export type TransactionStatus = 'pending' | 'approved' | 'rejected' | 'paid'
+export type PaymentMethod = 'cash' | 'bank_transfer' | 'card' | 'check' | 'direct_debit' | 'other'
+
+export interface Transaction {
+  id: string
+  clubId: string
+  type: TransactionType
+  amount: number
+  description: string
+  categoryId: string
+  categoryName?: string
+  
+  // Simple assignment (backward compatible)
+  teamId?: string
+  teamName?: string
+  projectId?: string
+  projectName?: string
+  eventId?: string
+  eventName?: string
+  
+  // Multiple allocations (new feature)
+  // If allocations exist, they override teamId/projectId/eventId
+  // Sum of percentages should equal 100%
+  allocations?: Allocation[]
+  
+  // Relations
+  supplierId?: string
+  supplierName?: string
+  sponsorId?: string
+  sponsorName?: string
+  employeeId?: string
+  employeeName?: string
+  
+  // Financial details
+  date: Date
+  dueDate?: Date // Fecha de vencimiento
+  paymentMethod: PaymentMethod
+  reference?: string
+  invoiceNumber?: string
+  
+  // For recurring (salaries, subscriptions)
+  isRecurring?: boolean
+  recurringPeriod?: 'monthly' | 'quarterly' | 'annual'
+  
+  // Attachments
+  attachments?: Attachment[]
+  
+  // Status & workflow
+  status: TransactionStatus
+  createdBy: string
+  createdByName?: string
+  approvedBy?: string
+  approvedAt?: Date
+  
+  // Timestamps
+  createdAt: Date
+  updatedAt: Date
+  
+  // Month closing
+  monthClosed?: boolean
+  closedInMonth?: string // Format: YYYY-MM
+}
+
+export interface Attachment {
+  id: string
+  name: string
+  url: string
+  type: string
+  size: number
+  uploadedAt: Date
+}
+
+// === MONTH CLOSING ===
+export type MonthClosingStatus = 'open' | 'pending_review' | 'closed'
+
+export interface MonthClosing {
+  id: string // Format: clubId_YYYY-MM
+  clubId: string
+  year: number
+  month: number
+  status: MonthClosingStatus
+  
+  // Summary
+  totalIncome: number
+  totalExpenses: number
+  balance: number
+  transactionCount: number
+  
+  // Breakdown by category
+  incomeByCategory: Record<string, number>
+  expensesByCategory: Record<string, number>
+  
+  // Breakdown by team/project
+  byTeam: Record<string, { income: number; expenses: number }>
+  byProject: Record<string, { income: number; expenses: number }>
+  
+  // Workflow
+  closedBy?: string
+  closedAt?: Date
+  reviewedBy?: string
+  reviewedAt?: Date
+  notes?: string
+  
+  createdAt: Date
+  updatedAt: Date
+}
+
+// === FORECASTS & BUDGETS ===
+export interface Forecast {
+  id: string
+  clubId: string
+  year: number
+  month: number
+  categoryId: string
+  type: TransactionType
+  amount: number
+  source: 'historical' | 'manual'
+  notes?: string
+  createdAt: Date
+  updatedAt: Date
+}
+
+export interface Budget {
+  id: string
+  clubId: string
+  name: string
+  year: number
+  teamId?: string
+  projectId?: string
+  allocations: BudgetAllocation[]
+  totalBudget: number
+  createdAt: Date
+  updatedAt: Date
+}
+
+export interface BudgetAllocation {
+  categoryId: string
+  amount: number
+  spent: number
+}
+
+// === FILTERS & QUERIES ===
+export interface TransactionFilters {
+  type?: TransactionType
+  status?: TransactionStatus
+  categoryId?: string
+  teamId?: string
+  projectId?: string
+  eventId?: string
+  supplierId?: string
+  sponsorId?: string
+  employeeId?: string
+  dateFrom?: Date
+  dateTo?: Date
+  searchQuery?: string
+  paymentMethod?: PaymentMethod
+}
+
+export interface DateRange {
+  start: Date
+  end: Date
+}
+
+// === STATISTICS ===
+export interface PeriodStats {
+  totalIncome: number
+  totalExpenses: number
+  balance: number
+  transactionCount: number
+  incomeCount: number
+  expenseCount: number
+  avgTransactionAmount: number
+  largestIncome: number
+  largestExpense: number
+}
+
+export interface CategoryStats {
+  categoryId: string
+  categoryName: string
+  total: number
+  count: number
+  percentage: number
+}
+
+export interface TrendData {
+  label: string
+  income: number
+  expenses: number
+  balance: number
+}
+
+// === NOTIFICATIONS ===
+export interface Notification {
+  id: string
+  userId: string
+  type: 'transaction_created' | 'transaction_approved' | 'transaction_rejected' | 'month_closed' | 'reminder'
+  title: string
+  message: string
+  read: boolean
+  link?: string
+  createdAt: Date
+}
+
+// === FINANCIAL HEALTH ===
+export interface FinancialTarget {
+  id: string
+  clubId: string
+  seasonYear: number // Año de inicio de temporada (2024 = temporada 2024-25)
+  targetSurplus: number
+  totalBudgetedIncome: number
+  totalBudgetedExpenses: number
+  notes?: string
+  createdAt: Date
+  updatedAt: Date
+}
+
+export type HealthStatus = 'excellent' | 'good' | 'warning' | 'critical'
+
+export interface FinancialHealthData {
+  // Current state
+  currentBalance: number
+  totalIncomeYTD: number
+  totalExpensesYTD: number
+  
+  // Targets
+  targetSurplus: number
+  budgetedIncomeYTD: number
+  budgetedExpensesYTD: number
+  
+  // Progress
+  progressPercent: number // 0-100+
+  balanceVsBudget: number // Actual - Expected
+  
+  // Projections
+  projectedYearEndBalance: number
+  gapToTarget: number // How much more income needed
+  
+  // Status
+  status: HealthStatus
+  statusMessage: string
+  
+  // Trends
+  monthlyTrend: 'improving' | 'stable' | 'declining'
+  incomeOnTrack: boolean
+  expensesOnTrack: boolean
+}
+
+export interface BudgetAlert {
+  id: string
+  type: 'overspend' | 'underfund' | 'cashflow' | 'deviation'
+  severity: 'info' | 'warning' | 'critical'
+  categoryId?: string
+  categoryName?: string
+  message: string
+  amount?: number
+  percentDeviation?: number
+  createdAt: Date
+}
+
+// === TEAM PROFITABILITY ANALYSIS ===
+export interface TeamFinancials {
+  teamId: string
+  teamName: string
+  teamColor: string
+  ageGroup?: AgeGroup
+  playersCount: number
+  
+  // Income breakdown
+  totalIncome: number
+  incomeFromFees: number // Cuotas de jugadores
+  incomeFromSponsors: number // Patrocinios asignados
+  incomeFromGrants: number // Subvenciones
+  incomeFromEvents: number // Eventos
+  incomeOther: number
+  
+  // Expense breakdown
+  totalExpenses: number
+  expensesCoaches: number // Salarios entrenadores
+  expensesEquipment: number // Equipaciones
+  expensesMaterial: number // Material deportivo
+  expensesTransport: number // Transporte/viajes
+  expensesFees: number // Licencias, federación
+  expensesOther: number
+  
+  // Analysis
+  balance: number // totalIncome - totalExpenses
+  balancePerPlayer: number
+  
+  // Fee analysis
+  currentMonthlyFee: number // Cuota actual
+  minSustainableFee: number // Cuota mínima = (totalExpenses - otherIncome) / playersCount / months
+  feeGap: number // currentFee - minSustainableFee (positive = surplus, negative = deficit)
+  feeCoveragePercent: number // How much of expenses are covered by fees
+  
+  // Status
+  isProfitable: boolean
+  status: 'surplus' | 'balanced' | 'deficit' | 'critical'
+  statusMessage: string
+}
+
+export interface TeamProfitabilityAlert {
+  id: string
+  teamId: string
+  teamName: string
+  type: 
+    | 'fee_too_low' // Cuota insuficiente
+    | 'high_expense_category' // Categoría de gasto anormalmente alta
+    | 'no_sponsors' // Equipo sin patrocinadores
+    | 'coach_cost_high' // Coste de entrenadores alto vs ingresos
+    | 'deficit_projected' // Se proyecta déficit
+    | 'expense_spike' // Pico de gasto inusual
+    | 'low_players' // Pocos jugadores para sostener gastos
+  severity: 'info' | 'warning' | 'critical'
+  title: string
+  message: string
+  recommendation: string
+  
+  // Data for context
+  currentValue?: number
+  expectedValue?: number
+  threshold?: number
+  categoryId?: string
+  categoryName?: string
+  
+  createdAt: Date
+}
+
+export interface ClubProfitabilitySummary {
+  // Overall
+  totalTeams: number
+  profitableTeams: number
+  deficitTeams: number
+  criticalTeams: number
+  
+  // Finances
+  totalClubIncome: number
+  totalClubExpenses: number
+  clubBalance: number
+  
+  // Unallocated (club-wide expenses not assigned to teams)
+  unallocatedExpenses: number
+  unallocatedIncome: number
+  
+  // Analysis
+  avgFeeGap: number // Average across all teams
+  teamsNeedingAttention: string[] // teamIds with issues
+  
+  // Top issues
+  topAlerts: TeamProfitabilityAlert[]
+}
+
+// === SMART ALERTS CONFIG ===
+export interface AlertThresholds {
+  // Fee alerts
+  minFeeCoveragePercent: number // Default: 60% - alert if fees cover less than this
+  criticalFeeCoveragePercent: number // Default: 40%
+  
+  // Expense alerts
+  expenseSpikePercent: number // Default: 50% - alert if category > 50% above average
+  highExpensePerPlayer: number // Default: 100€ - alert if expense per player exceeds
+  
+  // Balance alerts
+  maxDeficitMonths: number // Default: 3 - alert if deficit for X consecutive months
+  
+  // Category specific (€/month thresholds)
+  categoryThresholds: Record<string, number> // e.g., { 'sanitario': 800 }
+}
