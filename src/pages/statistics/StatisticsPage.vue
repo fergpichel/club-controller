@@ -248,6 +248,30 @@
           </q-list>
         </q-card-section>
       </q-card>
+
+      <!-- Season Comparison -->
+      <div class="season-comparison-section q-mb-lg animate-fade-in">
+        <SeasonComparison
+          title="Comparativa de Temporadas"
+          subtitle="Evolución mensual vs temporada anterior"
+        />
+      </div>
+
+      <!-- Expense Treemap -->
+      <div class="treemap-section q-mb-lg animate-fade-in">
+        <ExpenseTreemap
+          title="Distribución de Gastos"
+          subtitle="Visualización jerárquica por categoría"
+        />
+      </div>
+
+      <!-- Team Radar Comparison -->
+      <div class="radar-section q-mb-lg animate-fade-in">
+        <TeamRadarChart
+          title="Comparativa de Equipos"
+          subtitle="Análisis multidimensional por equipo"
+        />
+      </div>
     </div>
   </q-page>
 </template>
@@ -273,6 +297,9 @@ import { useStatisticsStore } from 'src/stores/statistics';
 import { useTransactionsStore } from 'src/stores/transactions';
 import { useTeamsStore } from 'src/stores/teams';
 import { useCategoriesStore } from 'src/stores/categories';
+import SeasonComparison from 'src/components/SeasonComparison.vue';
+import ExpenseTreemap from 'src/components/ExpenseTreemap.vue';
+import TeamRadarChart from 'src/components/TeamRadarChart.vue';
 
 ChartJS.register(
   CategoryScale,

@@ -365,6 +365,7 @@ const managementNavItems = [
 
 const adminNavItems = computed(() => [
   { name: 'pending', icon: 'pending_actions', label: 'Pendientes', to: { name: 'pending' }, badge: pendingCount.value },
+  { name: 'treasury', icon: 'show_chart', label: 'Tesorería', to: { name: 'treasury' } },
   { name: 'profitability', icon: 'account_balance_wallet', label: 'Rentabilidad', to: { name: 'profitability' } },
   { name: 'closings', icon: 'lock', label: 'Cierres', to: { name: 'closings' } },
   { name: 'categories', icon: 'category', label: 'Categorías', to: { name: 'categories' } },

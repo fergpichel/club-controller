@@ -31,12 +31,15 @@ module.exports = configure(function (/* ctx */) {
         node: 'node16'
       },
       vueRouterMode: 'history',
+      // Reduce memory usage in dev
+      sourcemap: false,
       vitePlugins: [
-        ['vite-plugin-checker', {
-          eslint: {
-            lintCommand: 'eslint "./**/*.{js,ts,mjs,cjs,vue}"'
-          }
-        }, { server: false }]
+        // Disabled: vite-plugin-checker can cause memory issues
+        // ['vite-plugin-checker', {
+        //   eslint: {
+        //     lintCommand: 'eslint "./**/*.{js,ts,mjs,cjs,vue}"'
+        //   }
+        // }, { server: false }]
       ]
     },
 
@@ -74,7 +77,7 @@ module.exports = configure(function (/* ctx */) {
       ]
     },
 
-    animations: 'all',
+    animations: ['fadeIn', 'fadeOut', 'slideInUp', 'slideInDown', 'slideInLeft', 'slideInRight'],
 
     ssr: {
       pwa: false,

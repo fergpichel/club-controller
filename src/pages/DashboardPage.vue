@@ -117,6 +117,44 @@
         </div>
       </section>
 
+      <!-- Budget Gauges -->
+      <section v-if="hasTransactions" class="gauges-section animate-in" style="animation-delay: 220ms">
+        <div class="gauges-grid">
+          <BudgetGauge
+            title="Cumplimiento Ingresos"
+            type="income"
+            :actual="financialHealth.totalIncomeYTD"
+            :budgeted="financialHealth.budgetedIncomeYTD"
+          />
+          <BudgetGauge
+            title="Control de Gastos"
+            type="expense"
+            :actual="financialHealth.totalExpensesYTD"
+            :budgeted="financialHealth.budgetedExpensesYTD"
+          />
+        </div>
+      </section>
+
+      <!-- Waterfall Chart - Balance Evolution -->
+      <section v-if="hasTransactions" class="waterfall-section animate-in" style="animation-delay: 250ms">
+        <WaterfallChart
+          title="Evolución del Balance"
+          subtitle="Flujo de caja mensual de la temporada"
+          :months="12"
+          :starting-balance="0"
+          :show-details="true"
+        />
+      </section>
+
+      <!-- Activity Heatmap -->
+      <section v-if="hasTransactions" class="heatmap-section animate-in" style="animation-delay: 280ms">
+        <ActivityHeatmap
+          title="Actividad Financiera"
+          subtitle="Movimientos de los últimos 6 meses"
+          :months="6"
+        />
+      </section>
+
       <!-- Transactions & Actions -->
       <section class="content-section">
         <div class="dashboard-grid">
@@ -279,6 +317,9 @@ import { useTeamsStore } from 'src/stores/teams'
 import TransactionItem from 'src/components/TransactionItem.vue'
 import FinancialHealthDashboard from 'src/components/FinancialHealthDashboard.vue'
 import MonthlyPulseWidget from 'src/components/MonthlyPulseWidget.vue'
+import WaterfallChart from 'src/components/WaterfallChart.vue'
+import BudgetGauge from 'src/components/BudgetGauge.vue'
+import ActivityHeatmap from 'src/components/ActivityHeatmap.vue'
 import { calculateFinancialHealth, generateBudgetAlerts } from 'src/services/financialHealth'
 import type { FinancialHealthData, BudgetAlert } from 'src/types'
 
@@ -344,6 +385,7 @@ const currentDateFormatted = computed(() => {
 
 const recentTransactions = computed(() => transactionsStore.transactions.slice(0, 5))
 const pendingCount = computed(() => transactionsStore.pendingTransactions.length)
+const hasTransactions = computed(() => transactionsStore.transactions.length > 0)
 const upcomingEvents = computed(() => teamsStore.upcomingEvents)
 
 // Monthly pulse data
@@ -593,10 +635,13 @@ watch(chartPeriod, () => {
   statisticsStore.fetchTrendData(chartPeriod.value)
 })
 
-// Watch for transaction changes
-watch(() => transactionsStore.transactions, () => {
-  updateFinancialHealth()
-}, { deep: true })
+// Watch for transaction changes (using length to avoid deep comparison)
+watch(
+  () => transactionsStore.transactions.length,
+  () => {
+    updateFinancialHealth()
+  }
+)
 
 onMounted(() => {
   refreshData()
@@ -639,7 +684,6 @@ onMounted(() => {
 
 // Health section - Main feature
 .health-section {
-  margin-top: calc(-1 * var(--space-10));
   position: relative;
   z-index: 10;
   margin-bottom: var(--space-6);
@@ -705,6 +749,31 @@ onMounted(() => {
 
 // Charts section
 .charts-section {
+  margin-bottom: var(--space-6);
+}
+
+// Gauges section
+.gauges-section {
+  margin-bottom: var(--space-6);
+}
+
+.gauges-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--space-5);
+
+  @media (max-width: 800px) {
+    grid-template-columns: 1fr;
+  }
+}
+
+// Waterfall section
+.waterfall-section {
+  margin-bottom: var(--space-6);
+}
+
+// Heatmap section
+.heatmap-section {
   margin-bottom: var(--space-6);
 }
 

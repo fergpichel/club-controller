@@ -1,94 +1,94 @@
 <template>
-  <div class="financial-hero">
-    <!-- Main Hero Card - THE ONE NUMBER THAT MATTERS -->
-    <div class="hero-card" :class="statusClass">
-      <div class="hero-background">
-        <div class="bg-shape bg-shape-1"></div>
-        <div class="bg-shape bg-shape-2"></div>
+  <div class="financial-dashboard">
+    <!-- Season Header -->
+    <div class="season-header">
+      <div class="season-info">
+        <span class="season-label">Temporada</span>
+        <span class="season-year">{{ seasonLabel }}</span>
       </div>
-      
-      <div class="hero-content">
-        <!-- Status Badge -->
-        <div class="hero-badge">
-          <span class="badge-dot"></span>
-          <span class="badge-text">{{ statusLabel }}</span>
-        </div>
+      <div class="status-badge" :class="statusClass">
+        <span class="badge-dot"></span>
+        <span class="badge-text">{{ statusLabel }}</span>
+      </div>
+    </div>
 
-        <!-- Main Balance -->
-        <div class="hero-balance">
-          <span class="balance-label">Balance actual</span>
-          <span class="balance-amount">{{ formatCurrency(healthData.currentBalance) }}</span>
-          <span class="balance-context">
-            Objetivo: <strong>{{ formatCurrency(healthData.targetSurplus) }}</strong> al final de temporada
+    <!-- Main Balance Card - Compact -->
+    <div class="balance-card" :class="statusClass">
+      <div class="balance-row">
+        <div class="balance-main">
+          <span class="balance-label">Balance acumulado</span>
+          <span class="balance-amount" :class="healthData.currentBalance >= 0 ? 'positive' : 'negative'">
+            {{ formatCurrency(healthData.currentBalance) }}
           </span>
         </div>
-
-        <!-- Visual Progress -->
-        <div class="hero-progress">
-          <div class="progress-track">
-            <div class="progress-fill" :style="{ width: progressWidth }"></div>
-            <div class="progress-marker" :style="{ left: progressWidth }">
-              <span class="marker-label">{{ Math.round(healthData.progressPercent) }}%</span>
+        <div class="balance-target">
+          <span class="target-label">Objetivo fin temporada</span>
+          <span class="target-amount">{{ formatCurrency(healthData.targetSurplus) }}</span>
+          <div class="progress-mini">
+            <div class="progress-track">
+              <div class="progress-fill" :style="{ width: progressWidth }"></div>
             </div>
-          </div>
-          <div class="progress-labels">
-            <span>0 €</span>
-            <span>{{ formatCurrencyShort(healthData.targetSurplus) }}</span>
+            <span class="progress-label">{{ Math.round(healthData.progressPercent) }}%</span>
           </div>
         </div>
-
-        <!-- Quick Insight -->
-        <div v-if="mainInsight" class="hero-insight" :class="mainInsight.type">
-          <q-icon :name="mainInsight.icon" size="20px" />
-          <span>{{ mainInsight.text }}</span>
-        </div>
+      </div>
+      
+      <!-- Quick Insight - Only if action needed -->
+      <div v-if="mainInsight && healthData.status !== 'excellent' && healthData.status !== 'good'" class="balance-insight">
+        <q-icon :name="mainInsight.icon" size="18px" />
+        <span>{{ mainInsight.text }}</span>
       </div>
     </div>
 
-    <!-- Two Key Metrics - Simple and Clear -->
-    <div class="metrics-row">
-      <div class="metric-card income">
-        <div class="metric-icon">
-          <q-icon name="arrow_upward" size="24px" />
+    <!-- Three Column Stats -->
+    <div class="stats-grid">
+      <div class="stat-card income">
+        <div class="stat-header">
+          <q-icon name="trending_up" size="20px" />
+          <span>Ingresos</span>
         </div>
-        <div class="metric-content">
-          <span class="metric-value">{{ formatCurrency(healthData.totalIncomeYTD) }}</span>
-          <span class="metric-label">Ingresos temporada</span>
-          <div class="metric-comparison">
-            <span v-if="incomeDeviation !== 0" :class="incomeDeviation >= 0 ? 'positive' : 'negative'">
-              {{ incomeDeviation >= 0 ? '+' : '' }}{{ incomeDeviation }}% vs previsto
-            </span>
-          </div>
+        <span class="stat-value">{{ formatCurrencyShort(healthData.totalIncomeYTD) }}</span>
+        <div v-if="incomeDeviation !== 0" class="stat-comparison">
+          <span :class="incomeDeviation >= 0 ? 'positive' : 'negative'">
+            {{ incomeDeviation >= 0 ? '+' : '' }}{{ incomeDeviation }}%
+          </span>
+          <span class="vs-text">vs previsto</span>
         </div>
       </div>
 
-      <div class="metric-card expense">
-        <div class="metric-icon">
-          <q-icon name="arrow_downward" size="24px" />
+      <div class="stat-card expense">
+        <div class="stat-header">
+          <q-icon name="trending_down" size="20px" />
+          <span>Gastos</span>
         </div>
-        <div class="metric-content">
-          <span class="metric-value">{{ formatCurrency(healthData.totalExpensesYTD) }}</span>
-          <span class="metric-label">Gastos temporada</span>
-          <div class="metric-comparison">
-            <span v-if="expenseDeviation !== 0" :class="expenseDeviation <= 0 ? 'positive' : 'negative'">
-              {{ expenseDeviation >= 0 ? '+' : '' }}{{ expenseDeviation }}% vs previsto
-            </span>
-          </div>
+        <span class="stat-value">{{ formatCurrencyShort(healthData.totalExpensesYTD) }}</span>
+        <div v-if="expenseDeviation !== 0" class="stat-comparison">
+          <span :class="expenseDeviation <= 0 ? 'positive' : 'negative'">
+            {{ expenseDeviation >= 0 ? '+' : '' }}{{ expenseDeviation }}%
+          </span>
+          <span class="vs-text">vs previsto</span>
         </div>
+      </div>
+
+      <div class="stat-card projection">
+        <div class="stat-header">
+          <q-icon name="auto_graph" size="20px" />
+          <span>Proyección</span>
+        </div>
+        <span class="stat-value" :class="healthData.projectedYearEndBalance >= 0 ? 'positive' : 'negative'">
+          {{ formatCurrencyShort(healthData.projectedYearEndBalance) }}
+        </span>
+        <span class="stat-label">al cierre temporada</span>
       </div>
     </div>
 
-    <!-- Alerts - Only if critical -->
-    <div v-if="criticalAlerts.length > 0" class="alerts-banner">
-      <div class="alerts-header">
-        <q-icon name="warning" size="24px" />
-        <span>{{ criticalAlerts.length }} {{ criticalAlerts.length === 1 ? 'alerta requiere' : 'alertas requieren' }} atención</span>
-      </div>
-      <div class="alerts-list">
-        <div v-for="alert in criticalAlerts.slice(0, 2)" :key="alert.id" class="alert-item">
-          <span>{{ alert.message }}</span>
-        </div>
-      </div>
+    <!-- Compact Alerts -->
+    <div v-if="criticalAlerts.length > 0" class="alerts-strip">
+      <q-icon name="warning_amber" size="18px" />
+      <span class="alert-text">{{ criticalAlerts[0].message }}</span>
+      <q-badge v-if="criticalAlerts.length > 1" color="warning" text-color="dark">
+        +{{ criticalAlerts.length - 1 }}
+      </q-badge>
     </div>
   </div>
 </template>
@@ -107,6 +107,13 @@ const alerts = computed(() => props.alerts || [])
 const criticalAlerts = computed(() => alerts.value.filter(a => a.severity === 'critical' || a.severity === 'warning'))
 
 const statusClass = computed(() => `status-${props.healthData.status}`)
+
+// Calculate season label (e.g., "2025-26")
+const seasonLabel = computed(() => {
+  const now = new Date()
+  const year = now.getMonth() >= 8 ? now.getFullYear() : now.getFullYear() - 1
+  return `${year}-${(year + 1).toString().slice(-2)}`
+})
 
 const statusLabel = computed(() => {
   switch (props.healthData.status) {
@@ -184,104 +191,78 @@ function formatCurrencyShort(value: number): string {
 </script>
 
 <style lang="scss" scoped>
-.financial-hero {
+.financial-dashboard {
   display: flex;
   flex-direction: column;
-  gap: var(--space-4);
+  gap: var(--space-3);
 }
 
-// === HERO CARD ===
-.hero-card {
-  position: relative;
-  border-radius: var(--radius-2xl);
-  padding: var(--space-8);
-  overflow: hidden;
-  color: white;
+// === SEASON HEADER ===
+.season-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--space-1);
+}
+
+.season-info {
+  display: flex;
+  flex-direction: column;
   
-  @media (max-width: 600px) {
-    padding: var(--space-6);
+  .season-label {
+    font-size: 0.75rem;
+    color: var(--color-text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
   }
   
-  // Status-based backgrounds
-  &.status-excellent {
-    background: linear-gradient(135deg, #059669 0%, #10B981 100%);
-    .badge-dot { background: #A7F3D0; }
-    .progress-fill { background: rgba(255, 255, 255, 0.9); }
-  }
-  
-  &.status-good {
-    background: linear-gradient(135deg, #4F46E5 0%, #6366F1 100%);
-    .badge-dot { background: #C7D2FE; }
-    .progress-fill { background: rgba(255, 255, 255, 0.9); }
-  }
-  
-  &.status-warning {
-    background: linear-gradient(135deg, #D97706 0%, #F59E0B 100%);
-    .badge-dot { background: #FDE68A; }
-    .progress-fill { background: rgba(255, 255, 255, 0.9); }
-  }
-  
-  &.status-critical {
-    background: linear-gradient(135deg, #DC2626 0%, #EF4444 100%);
-    .badge-dot { background: #FECACA; }
-    .progress-fill { background: rgba(255, 255, 255, 0.9); }
+  .season-year {
+    font-size: 1.125rem;
+    font-weight: 700;
+    color: var(--color-text-primary);
   }
 }
 
-.hero-background {
-  position: absolute;
-  inset: 0;
-  overflow: hidden;
-  pointer-events: none;
-  
-  .bg-shape {
-    position: absolute;
-    border-radius: 50%;
-    background: rgba(255, 255, 255, 0.1);
-  }
-  
-  .bg-shape-1 {
-    width: 300px;
-    height: 300px;
-    top: -100px;
-    right: -50px;
-  }
-  
-  .bg-shape-2 {
-    width: 200px;
-    height: 200px;
-    bottom: -80px;
-    left: -40px;
-  }
-}
-
-.hero-content {
-  position: relative;
-  z-index: 1;
-}
-
-.hero-badge {
+.status-badge {
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
-  background: rgba(255, 255, 255, 0.2);
-  backdrop-filter: blur(10px);
-  padding: var(--space-2) var(--space-4);
+  padding: var(--space-1) var(--space-3);
   border-radius: var(--radius-full);
-  margin-bottom: var(--space-6);
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
   
   .badge-dot {
-    width: 8px;
-    height: 8px;
+    width: 6px;
+    height: 6px;
     border-radius: 50%;
     animation: pulse 2s infinite;
   }
   
-  .badge-text {
-    font-size: 0.8125rem;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
+  &.status-excellent {
+    background: rgba(16, 185, 129, 0.15);
+    color: #059669;
+    .badge-dot { background: #10B981; }
+  }
+  
+  &.status-good {
+    background: rgba(99, 102, 241, 0.15);
+    color: #4F46E5;
+    .badge-dot { background: #6366F1; }
+  }
+  
+  &.status-warning {
+    background: rgba(245, 158, 11, 0.15);
+    color: #D97706;
+    .badge-dot { background: #F59E0B; }
+  }
+  
+  &.status-critical {
+    background: rgba(239, 68, 68, 0.15);
+    color: #DC2626;
+    .badge-dot { background: #EF4444; }
   }
 }
 
@@ -290,214 +271,224 @@ function formatCurrencyShort(value: number): string {
   50% { opacity: 0.6; transform: scale(1.1); }
 }
 
-.hero-balance {
-  margin-bottom: var(--space-8);
+// === BALANCE CARD ===
+.balance-card {
+  background: var(--color-bg-elevated);
+  border-radius: var(--radius-xl);
+  padding: var(--space-4);
+  border: 2px solid var(--color-border-light);
   
+  &.status-excellent { border-color: rgba(16, 185, 129, 0.4); }
+  &.status-good { border-color: rgba(99, 102, 241, 0.4); }
+  &.status-warning { border-color: rgba(245, 158, 11, 0.4); }
+  &.status-critical { border-color: rgba(239, 68, 68, 0.4); }
+}
+
+.balance-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--space-4);
+  
+  @media (max-width: 500px) {
+    flex-direction: column;
+    gap: var(--space-3);
+  }
+}
+
+.balance-main {
   .balance-label {
     display: block;
-    font-size: 0.875rem;
-    opacity: 0.9;
+    font-size: 0.8125rem;
+    color: var(--color-text-tertiary);
     margin-bottom: var(--space-1);
   }
   
   .balance-amount {
-    display: block;
     font-family: 'DM Sans', sans-serif;
-    font-size: 3.5rem;
+    font-size: 2rem;
     font-weight: 700;
     letter-spacing: -0.02em;
-    line-height: 1.1;
-    margin-bottom: var(--space-2);
     
-    @media (max-width: 600px) {
-      font-size: 2.5rem;
-    }
-  }
-  
-  .balance-context {
-    font-size: 0.9375rem;
-    opacity: 0.85;
+    &.positive { color: #10B981; }
+    &.negative { color: #EF4444; }
     
-    strong {
-      font-weight: 600;
+    @media (max-width: 500px) {
+      font-size: 1.75rem;
     }
   }
 }
 
-.hero-progress {
-  margin-bottom: var(--space-6);
+.balance-target {
+  text-align: right;
+  
+  @media (max-width: 500px) {
+    text-align: left;
+    width: 100%;
+  }
+  
+  .target-label {
+    display: block;
+    font-size: 0.75rem;
+    color: var(--color-text-tertiary);
+    margin-bottom: var(--space-1);
+  }
+  
+  .target-amount {
+    display: block;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 1.125rem;
+    font-weight: 600;
+    color: var(--color-text-secondary);
+    margin-bottom: var(--space-2);
+  }
+}
+
+.progress-mini {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  
+  @media (max-width: 500px) {
+    max-width: 200px;
+  }
   
   .progress-track {
-    position: relative;
-    height: 8px;
-    background: rgba(255, 255, 255, 0.2);
+    flex: 1;
+    height: 4px;
+    background: var(--color-border-light);
     border-radius: var(--radius-full);
-    overflow: visible;
-    margin-bottom: var(--space-3);
+    overflow: hidden;
+    min-width: 80px;
+    
+    @media (max-width: 500px) {
+      min-width: 120px;
+    }
   }
   
   .progress-fill {
-    position: absolute;
     height: 100%;
+    background: var(--color-primary);
     border-radius: var(--radius-full);
-    transition: width 0.8s ease-out;
+    transition: width 0.5s ease-out;
   }
   
-  .progress-marker {
-    position: absolute;
-    top: 50%;
-    transform: translate(-50%, -50%);
-    
-    .marker-label {
-      display: block;
-      background: white;
-      color: #1F2937;
-      font-size: 0.75rem;
-      font-weight: 700;
-      padding: 4px 10px;
-      border-radius: var(--radius-full);
-      white-space: nowrap;
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
-    }
-  }
-  
-  .progress-labels {
-    display: flex;
-    justify-content: space-between;
+  .progress-label {
     font-size: 0.75rem;
-    opacity: 0.7;
+    font-weight: 600;
+    color: var(--color-text-secondary);
+    white-space: nowrap;
   }
 }
 
-.hero-insight {
+.balance-insight {
   display: flex;
   align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-4);
-  background: rgba(255, 255, 255, 0.15);
-  backdrop-filter: blur(10px);
-  border-radius: var(--radius-lg);
-  font-size: 0.9375rem;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  background: rgba(239, 68, 68, 0.08);
+  border-radius: var(--radius-md);
+  font-size: 0.8125rem;
+  color: #DC2626;
   
   .q-icon {
     flex-shrink: 0;
   }
-  
-  &.success { background: rgba(255, 255, 255, 0.2); }
-  &.info { background: rgba(255, 255, 255, 0.15); }
-  &.warning { background: rgba(0, 0, 0, 0.1); }
-  &.danger { background: rgba(0, 0, 0, 0.15); }
 }
 
-// === METRICS ROW ===
-.metrics-row {
+// === STATS GRID ===
+.stats-grid {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: var(--space-4);
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-3);
   
-  @media (max-width: 500px) {
+  @media (max-width: 600px) {
     grid-template-columns: 1fr;
   }
 }
 
-.metric-card {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--space-4);
+.stat-card {
   background: var(--color-bg-elevated);
-  border-radius: var(--radius-xl);
-  padding: var(--space-5);
+  border-radius: var(--radius-lg);
+  padding: var(--space-3);
   border: 1px solid var(--color-border-light);
-  transition: all var(--duration-fast) var(--ease-out);
   
-  &:hover {
-    border-color: var(--color-border);
-    box-shadow: var(--shadow-sm);
-  }
-  
-  .metric-icon {
-    width: 48px;
-    height: 48px;
-    border-radius: var(--radius-lg);
+  .stat-header {
     display: flex;
     align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
+    gap: var(--space-2);
+    margin-bottom: var(--space-2);
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: var(--color-text-tertiary);
   }
   
-  &.income .metric-icon {
-    background: rgba(16, 185, 129, 0.1);
-    color: #10B981;
+  &.income {
+    .stat-header { color: #10B981; }
   }
   
-  &.expense .metric-icon {
-    background: rgba(239, 68, 68, 0.1);
-    color: #EF4444;
+  &.expense {
+    .stat-header { color: #EF4444; }
   }
   
-  .metric-content {
-    flex: 1;
-    min-width: 0;
+  &.projection {
+    .stat-header { color: var(--color-primary); }
   }
   
-  .metric-value {
+  .stat-value {
     display: block;
     font-family: 'DM Sans', sans-serif;
-    font-size: 1.5rem;
+    font-size: 1.25rem;
     font-weight: 700;
     color: var(--color-text-primary);
-    letter-spacing: -0.01em;
     margin-bottom: var(--space-1);
-  }
-  
-  .metric-label {
-    display: block;
-    font-size: 0.8125rem;
-    color: var(--color-text-tertiary);
-    margin-bottom: var(--space-2);
-  }
-  
-  .metric-comparison {
-    font-size: 0.8125rem;
-    font-weight: 600;
     
-    .positive { color: #10B981; }
-    .negative { color: #EF4444; }
+    &.positive { color: #10B981; }
+    &.negative { color: #EF4444; }
+  }
+  
+  .stat-label {
+    font-size: 0.75rem;
+    color: var(--color-text-tertiary);
+  }
+  
+  .stat-comparison {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    font-size: 0.75rem;
+    
+    .positive { color: #10B981; font-weight: 600; }
+    .negative { color: #EF4444; font-weight: 600; }
+    .vs-text { color: var(--color-text-tertiary); }
   }
 }
 
-// === ALERTS BANNER ===
-.alerts-banner {
-  background: linear-gradient(135deg, #FEF3C7 0%, #FDE68A 100%);
-  border: 1px solid rgba(217, 119, 6, 0.3);
-  border-radius: var(--radius-xl);
-  padding: var(--space-5);
+// === ALERTS STRIP ===
+.alerts-strip {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  background: rgba(245, 158, 11, 0.1);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  border-radius: var(--radius-md);
+  font-size: 0.8125rem;
+  color: #B45309;
   
-  .alerts-header {
-    display: flex;
-    align-items: center;
-    gap: var(--space-3);
-    margin-bottom: var(--space-4);
-    color: #92400E;
-    font-weight: 600;
-    
-    .q-icon {
-      color: #D97706;
-    }
+  .q-icon {
+    flex-shrink: 0;
+    color: #D97706;
   }
   
-  .alerts-list {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-2);
-  }
-  
-  .alert-item {
-    background: rgba(255, 255, 255, 0.6);
-    padding: var(--space-3) var(--space-4);
-    border-radius: var(--radius-md);
-    font-size: 0.875rem;
-    color: #78350F;
+  .alert-text {
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 }
 </style>

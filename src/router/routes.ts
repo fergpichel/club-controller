@@ -200,6 +200,14 @@ const routes: RouteRecordRaw[] = [
         meta: { requiresManager: true }
       },
 
+      // Treasury (Advanced Financial Analysis)
+      {
+        path: 'treasury',
+        name: 'treasury',
+        component: () => import('src/pages/treasury/TreasuryPage.vue'),
+        meta: { requiresManager: true }
+      },
+
       // Settings
       { 
         path: 'settings', 

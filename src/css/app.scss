@@ -398,6 +398,13 @@ h4, .text-h4 {
   }
 }
 
+// Fix spacing for text inputs only (not selects)
+.q-input.q-field--outlined.q-field--float {
+  .q-field__native {
+    padding-top: 10px;
+  }
+}
+
 // === BADGES & CHIPS ===
 .q-badge {
   font-family: $font-body;
