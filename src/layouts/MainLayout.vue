@@ -539,7 +539,7 @@ onMounted(async () => {
     await Promise.all([
       categoriesStore.fetchCategories(),
       teamsStore.fetchAll(),
-      transactionsStore.fetchTransactions({ status: 'pending' })
+      transactionsStore.fetchTransactions({})
     ])
   }
 })

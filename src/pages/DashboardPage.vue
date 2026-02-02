@@ -612,6 +612,11 @@ async function refreshData() {
     const year = now.getFullYear()
     const month = now.getMonth() + 1
 
+    // Only fetch transactions if not already loaded (MainLayout loads them)
+    const transactionsPromise = transactionsStore.transactions.length === 0
+      ? transactionsStore.fetchTransactions({})
+      : Promise.resolve()
+
     await Promise.all([
       statisticsStore.fetchMonthlyStats(year, month),
       statisticsStore.fetchTrendData(chartPeriod.value),
@@ -620,7 +625,7 @@ async function refreshData() {
         new Date(year, month, 0),
         'expense'
       ),
-      transactionsStore.fetchTransactions({}),
+      transactionsPromise,
       teamsStore.fetchEvents()
     ])
 
@@ -644,6 +649,10 @@ watch(
 )
 
 onMounted(() => {
+  // Update financial health immediately if transactions are already loaded
+  if (transactionsStore.transactions.length > 0) {
+    updateFinancialHealth()
+  }
   refreshData()
 })
 </script>
