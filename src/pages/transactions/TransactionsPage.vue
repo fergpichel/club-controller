@@ -256,7 +256,7 @@
               v-for="(s, idx) in aiSuggestions"
               :key="s.transactionId"
               class="ai-suggestion-row"
-              :class="{ accepted: s.accepted, rejected: s.rejected }"
+              :class="{ accepted: s.accepted, corrected: s.corrected }"
             >
               <div class="suggestion-info">
                 <div class="suggestion-description">{{ s.description }}</div>
@@ -264,9 +264,16 @@
                   {{ s.type === 'income' ? '+' : '-' }}{{ formatCurrency(s.amount) }}
                 </div>
               </div>
-              <div class="suggestion-category">
+
+              <!-- AI suggestion chip (when not correcting) -->
+              <div v-if="!s.showCorrector" class="suggestion-category">
                 <q-icon name="arrow_forward" size="16px" color="grey" class="q-mx-sm" />
-                <template v-if="s.categoryName">
+                <template v-if="s.corrected">
+                  <q-chip color="teal-2" text-color="dark" size="sm" icon="edit">
+                    {{ s.correctedCategoryName }}
+                  </q-chip>
+                </template>
+                <template v-else-if="s.categoryName">
                   <q-chip
                     :color="s.confidence > 0.7 ? 'deep-purple-2' : 'amber-2'"
                     text-color="dark"
@@ -283,23 +290,64 @@
                 </template>
                 <span v-else class="text-grey-6">Sin sugerencia</span>
               </div>
+
+              <!-- Inline category corrector -->
+              <div v-if="s.showCorrector" class="suggestion-corrector">
+                <q-select
+                  :model-value="s.correctedCategoryId"
+                  :options="s.type === 'income' ? incomeCorrectorFilter.options.value : expenseCorrectorFilter.options.value"
+                  label="Categoría correcta"
+                  emit-value
+                  map-options
+                  dense
+                  outlined
+                  use-input
+                  input-debounce="0"
+                  class="corrector-select"
+                  @filter="s.type === 'income' ? incomeCorrectorFilter.filter : expenseCorrectorFilter.filter"
+                  @update:model-value="(val: string | null) => applyCategoryCorrection(idx, val)"
+                >
+                  <template #option="scope">
+                    <q-item v-bind="scope.itemProps">
+                      <q-item-section avatar>
+                        <q-icon :name="scope.opt.icon || 'circle'" :style="{ color: scope.opt.color }" size="18px" />
+                      </q-item-section>
+                      <q-item-section>
+                        <q-item-label :class="{ 'q-pl-md': scope.opt.isChild }">{{ scope.opt.label }}</q-item-label>
+                      </q-item-section>
+                    </q-item>
+                  </template>
+                </q-select>
+                <q-btn flat round dense icon="close" size="sm" color="grey" @click="s.showCorrector = false" />
+              </div>
+
+              <!-- Actions -->
               <div class="suggestion-actions">
-                <q-btn
-                  v-if="s.categoryId && !s.accepted && !s.rejected"
-                  flat round dense icon="check" color="positive" size="sm"
-                  @click="acceptSuggestion(idx)"
-                >
-                  <q-tooltip>Aceptar</q-tooltip>
-                </q-btn>
-                <q-btn
-                  v-if="s.categoryId && !s.accepted && !s.rejected"
-                  flat round dense icon="close" color="negative" size="sm"
-                  @click="rejectSuggestion(idx)"
-                >
-                  <q-tooltip>Rechazar</q-tooltip>
-                </q-btn>
-                <q-icon v-if="s.accepted" name="check_circle" color="positive" size="20px" />
-                <q-icon v-if="s.rejected" name="cancel" color="grey-5" size="20px" />
+                <template v-if="!s.accepted && !s.corrected">
+                  <q-btn
+                    v-if="s.categoryId"
+                    flat round dense icon="check" color="positive" size="sm"
+                    @click="acceptSuggestion(idx)"
+                  >
+                    <q-tooltip>Aceptar sugerencia</q-tooltip>
+                  </q-btn>
+                  <q-btn
+                    flat round dense icon="edit" color="amber-8" size="sm"
+                    @click="s.showCorrector = !s.showCorrector"
+                  >
+                    <q-tooltip>Corregir categoría</q-tooltip>
+                  </q-btn>
+                </template>
+                <template v-else>
+                  <q-icon v-if="s.accepted && !s.corrected" name="check_circle" color="positive" size="20px" />
+                  <q-icon v-if="s.corrected" name="edit" color="teal" size="20px" />
+                  <q-btn
+                    flat round dense icon="undo" color="grey" size="xs"
+                    @click="resetSuggestion(idx)"
+                  >
+                    <q-tooltip>Deshacer</q-tooltip>
+                  </q-btn>
+                </template>
               </div>
             </div>
           </q-scroll-area>
@@ -309,7 +357,7 @@
 
         <q-card-actions class="ai-suggestions-footer">
           <div class="text-caption text-grey">
-            {{ acceptedCount }} aceptadas · {{ rejectedCount }} rechazadas · {{ pendingSuggestionCount }} pendientes
+            {{ acceptedCount }} aceptadas · {{ correctedCount }} corregidas · {{ pendingSuggestionCount }} pendientes
           </div>
           <q-space />
           <q-btn
@@ -323,12 +371,12 @@
           />
           <q-btn
             unelevated
-            label="Aplicar aceptadas"
+            label="Aplicar cambios"
             icon="save"
             color="deep-purple"
             no-caps
             :loading="aiApplying"
-            :disable="acceptedCount === 0"
+            :disable="acceptedCount + correctedCount === 0"
             @click="applyAcceptedSuggestions"
           />
         </q-card-actions>
@@ -347,7 +395,7 @@ import { useCategoriesStore } from 'src/stores/categories';
 import { useTeamsStore } from 'src/stores/teams';
 import TransactionItem from 'src/components/TransactionItem.vue';
 import { useSelectFilter } from 'src/composables/useSelectFilter';
-import { isAIAvailable, suggestCategoriesBatch, type CategoryInfo } from 'src/services/aiCategorization';
+import { isAIAvailable, suggestCategoriesBatch, saveCorrections, loadCorrections, type CategoryInfo } from 'src/services/aiCategorization';
 import { formatCurrency } from 'src/utils/formatters';
 import type { TransactionFilters, TransactionType, TransactionStatus } from 'src/types';
 import { getSeasonOptions, UNCATEGORIZED_CATEGORY_ID } from 'src/types';
@@ -542,16 +590,45 @@ interface AISuggestionItem {
   categoryName: string | null
   confidence: number
   accepted: boolean
-  rejected: boolean
+  corrected: boolean
+  correctedCategoryId: string | null
+  correctedCategoryName: string | null
+  showCorrector: boolean
 }
 
 const aiSuggestions = ref<AISuggestionItem[]>([])
 
-const acceptedCount = computed(() => aiSuggestions.value.filter(s => s.accepted).length)
-const rejectedCount = computed(() => aiSuggestions.value.filter(s => s.rejected).length)
+const acceptedCount = computed(() => aiSuggestions.value.filter(s => s.accepted && !s.corrected).length)
+const correctedCount = computed(() => aiSuggestions.value.filter(s => s.corrected).length)
 const pendingSuggestionCount = computed(() =>
-  aiSuggestions.value.filter(s => s.categoryId && !s.accepted && !s.rejected).length
+  aiSuggestions.value.filter(s => !s.accepted && !s.corrected).length
 )
+
+// Category options for the corrector selector
+const incomeCorrectorOptions = computed(() => {
+  const tree = categoriesStore.getCategoriesTree('income')
+  const opts: { label: string; value: string; icon: string; color: string; isChild: boolean }[] = []
+  for (const p of tree) {
+    opts.push({ label: p.name, value: p.id, icon: p.icon, color: p.color, isChild: false })
+    for (const s of p.subcategories) {
+      opts.push({ label: `↳ ${s.name}`, value: s.id, icon: s.icon, color: s.color, isChild: true })
+    }
+  }
+  return opts
+})
+const expenseCorrectorOptions = computed(() => {
+  const tree = categoriesStore.getCategoriesTree('expense')
+  const opts: { label: string; value: string; icon: string; color: string; isChild: boolean }[] = []
+  for (const p of tree) {
+    opts.push({ label: p.name, value: p.id, icon: p.icon, color: p.color, isChild: false })
+    for (const s of p.subcategories) {
+      opts.push({ label: `↳ ${s.name}`, value: s.id, icon: s.icon, color: s.color, isChild: true })
+    }
+  }
+  return opts
+})
+const incomeCorrectorFilter = useSelectFilter(incomeCorrectorOptions)
+const expenseCorrectorFilter = useSelectFilter(expenseCorrectorOptions)
 
 function buildCategoryInfoList(): CategoryInfo[] {
   return categoriesStore.allActiveCategories.map(c => {
@@ -580,7 +657,10 @@ async function aiAutoCategorizeUncategorized() {
       type: t.type
     }))
 
-    const suggestions = await suggestCategoriesBatch(concepts, categories)
+    // Load past corrections as context for the AI
+    const corrections = await loadCorrections()
+
+    const suggestions = await suggestCategoriesBatch(concepts, categories, corrections)
 
     aiSuggestions.value = uncategorized.map((t, i) => ({
       transactionId: t.id,
@@ -591,7 +671,10 @@ async function aiAutoCategorizeUncategorized() {
       categoryName: suggestions[i]?.categoryName || null,
       confidence: suggestions[i]?.confidence || 0,
       accepted: false,
-      rejected: false
+      corrected: false,
+      correctedCategoryId: null,
+      correctedCategoryName: null,
+      showCorrector: false
     }))
 
     aiProgress.value = uncategorized.length
@@ -609,46 +692,83 @@ async function aiAutoCategorizeUncategorized() {
 
 function acceptSuggestion(idx: number) {
   aiSuggestions.value[idx].accepted = true
-  aiSuggestions.value[idx].rejected = false
+  aiSuggestions.value[idx].corrected = false
+  aiSuggestions.value[idx].showCorrector = false
 }
 
-function rejectSuggestion(idx: number) {
-  aiSuggestions.value[idx].rejected = true
-  aiSuggestions.value[idx].accepted = false
+function applyCategoryCorrection(idx: number, categoryId: string | null) {
+  if (!categoryId) return
+  const cat = categoriesStore.getCategoryById(categoryId)
+  if (!cat) return
+
+  const s = aiSuggestions.value[idx]
+  s.corrected = true
+  s.accepted = false
+  s.correctedCategoryId = categoryId
+  s.correctedCategoryName = cat.name
+  s.showCorrector = false
+}
+
+function resetSuggestion(idx: number) {
+  const s = aiSuggestions.value[idx]
+  s.accepted = false
+  s.corrected = false
+  s.correctedCategoryId = null
+  s.correctedCategoryName = null
+  s.showCorrector = false
 }
 
 function acceptAllSuggestions() {
   for (const s of aiSuggestions.value) {
-    if (s.categoryId && !s.rejected) {
+    if (s.categoryId && !s.corrected) {
       s.accepted = true
     }
   }
 }
 
 async function applyAcceptedSuggestions() {
-  const accepted = aiSuggestions.value.filter(s => s.accepted && s.categoryId)
-  if (accepted.length === 0) return
+  const toApply = aiSuggestions.value.filter(s => s.accepted || s.corrected)
+  if (toApply.length === 0) return
 
   aiApplying.value = true
   try {
-    for (const s of accepted) {
-      const cat = categoriesStore.getCategoryById(s.categoryId!)
+    // Collect corrections for feedback
+    const corrections: { concept: string; categoryId: string; categoryName: string; type: 'income' | 'expense' }[] = []
+
+    for (const s of toApply) {
+      const finalCategoryId = s.corrected ? s.correctedCategoryId! : s.categoryId!
+      const cat = categoriesStore.getCategoryById(finalCategoryId)
       if (cat) {
         await transactionsStore.updateTransaction(s.transactionId, {
-          categoryId: s.categoryId!,
+          categoryId: finalCategoryId,
           categoryName: cat.name
         })
+
+        // If the user corrected the AI suggestion, save it as feedback
+        if (s.corrected) {
+          corrections.push({
+            concept: s.description,
+            categoryId: finalCategoryId,
+            categoryName: cat.name,
+            type: s.type
+          })
+        }
       }
+    }
+
+    // Save corrections for future AI context
+    if (corrections.length > 0) {
+      await saveCorrections(corrections)
     }
 
     $q.notify({
       type: 'positive',
       icon: 'auto_awesome',
-      message: `${accepted.length} transacciones categorizadas`
+      message: `${toApply.length} transacciones categorizadas${corrections.length > 0 ? ` (${corrections.length} correcciones guardadas)` : ''}`
     })
 
     showAISuggestions.value = false
-    fetchWithFilters() // Refresh the list
+    fetchWithFilters()
   } catch (e) {
     console.error('[AI] Apply suggestions error:', e)
     $q.notify({ type: 'negative', message: 'Error al aplicar sugerencias' })
@@ -814,8 +934,8 @@ onMounted(async () => {
       background: rgba(76, 175, 80, 0.06);
     }
 
-    &.rejected {
-      opacity: 0.4;
+    &.corrected {
+      background: rgba(0, 150, 136, 0.06);
     }
 
     .suggestion-info {
@@ -854,10 +974,24 @@ onMounted(async () => {
       }
     }
 
+    .suggestion-corrector {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      min-width: 220px;
+      flex-shrink: 0;
+
+      .corrector-select {
+        min-width: 200px;
+        font-size: 0.85rem;
+      }
+    }
+
     .suggestion-actions {
       display: flex;
+      align-items: center;
       gap: 4px;
-      min-width: 60px;
+      min-width: 70px;
       justify-content: flex-end;
     }
   }

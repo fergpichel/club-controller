@@ -10,6 +10,9 @@
  */
 
 import { GoogleGenerativeAI } from '@google/generative-ai'
+import { collection, addDoc, getDocs, query, orderBy, limit, serverTimestamp } from 'firebase/firestore'
+import { db } from 'src/boot/firebase'
+import { useAuthStore } from 'src/stores/auth'
 import { logger } from 'src/utils/logger'
 
 // ─── Types ───────────────────────────────────────────────────────────
@@ -78,6 +81,102 @@ function buildCategoryContext(categories: CategoryInfo[]): string {
   return ctx
 }
 
+// ─── Corrections / feedback ─────────────────────────────────────────
+
+export interface AICorrection {
+  concept: string
+  categoryId: string
+  categoryName: string
+  type: 'income' | 'expense'
+}
+
+/**
+ * Save user corrections to Firestore so they can be used as
+ * few-shot examples in future AI calls.
+ */
+export async function saveCorrections(corrections: AICorrection[]): Promise<void> {
+  try {
+    const authStore = useAuthStore()
+    const clubId = authStore.user?.clubId
+    if (!clubId || corrections.length === 0) return
+
+    const colRef = collection(db, 'clubs', clubId, 'ai_corrections')
+
+    for (const c of corrections) {
+      await addDoc(colRef, {
+        concept: c.concept,
+        categoryId: c.categoryId,
+        categoryName: c.categoryName,
+        type: c.type,
+        createdAt: serverTimestamp()
+      })
+    }
+
+    // Also update localStorage cache
+    const cacheKey = `ai_corrections_${clubId}`
+    const cached = JSON.parse(localStorage.getItem(cacheKey) || '[]') as AICorrection[]
+    cached.push(...corrections)
+    // Keep only the latest 100
+    const trimmed = cached.slice(-100)
+    localStorage.setItem(cacheKey, JSON.stringify(trimmed))
+
+    logger.debug(`[AI] Saved ${corrections.length} corrections for club ${clubId}`)
+  } catch (err) {
+    logger.error('[AI] Error saving corrections:', err)
+  }
+}
+
+/**
+ * Load recent corrections from Firestore (or localStorage cache).
+ * These are included as examples in AI prompts for better accuracy.
+ */
+export async function loadCorrections(): Promise<AICorrection[]> {
+  try {
+    const authStore = useAuthStore()
+    const clubId = authStore.user?.clubId
+    if (!clubId) return []
+
+    // Try cache first
+    const cacheKey = `ai_corrections_${clubId}`
+    const cached = localStorage.getItem(cacheKey)
+    if (cached) {
+      const parsed = JSON.parse(cached) as AICorrection[]
+      if (parsed.length > 0) return parsed.slice(-50) // Return up to 50 recent corrections
+    }
+
+    // Fetch from Firestore
+    const colRef = collection(db, 'clubs', clubId, 'ai_corrections')
+    const q = query(colRef, orderBy('createdAt', 'desc'), limit(50))
+    const snap = await getDocs(q)
+
+    const corrections: AICorrection[] = snap.docs.map(d => ({
+      concept: d.data().concept,
+      categoryId: d.data().categoryId,
+      categoryName: d.data().categoryName,
+      type: d.data().type
+    }))
+
+    // Update cache
+    localStorage.setItem(cacheKey, JSON.stringify(corrections))
+
+    return corrections
+  } catch (err) {
+    logger.error('[AI] Error loading corrections:', err)
+    return []
+  }
+}
+
+function buildCorrectionsContext(corrections: AICorrection[]): string {
+  if (corrections.length === 0) return ''
+
+  let ctx = '\n--- CORRECCIONES PREVIAS DEL USUARIO (usa como referencia) ---\n'
+  ctx += 'Estas son categorías que el usuario corrigió manualmente. Prioriza estas asociaciones:\n'
+  for (const c of corrections) {
+    ctx += `  "${c.concept}" → "${c.categoryName}" (${c.type === 'income' ? 'INGRESO' : 'GASTO'})\n`
+  }
+  return ctx
+}
+
 // ─── Batch categorization (for import) ──────────────────────────────
 
 /**
@@ -86,16 +185,19 @@ function buildCategoryContext(categories: CategoryInfo[]): string {
  *
  * @param concepts Array of { concept, type } to categorize
  * @param categories All available categories in the club
+ * @param corrections Optional — past user corrections for context
  * @returns Array of suggestions in the same order as the input
  */
 export async function suggestCategoriesBatch(
   concepts: { concept: string; type: 'income' | 'expense' }[],
-  categories: CategoryInfo[]
+  categories: CategoryInfo[],
+  corrections?: AICorrection[]
 ): Promise<CategorizationSuggestion[]> {
   if (concepts.length === 0) return []
 
   const model = getModel()
   const categoryContext = buildCategoryContext(categories)
+  const correctionsContext = corrections ? buildCorrectionsContext(corrections) : ''
 
   // Process in chunks of 30 to avoid token limits
   const CHUNK_SIZE = 30
@@ -112,6 +214,7 @@ export async function suggestCategoriesBatch(
 
 CATEGORÍAS DISPONIBLES:
 ${categoryContext}
+${correctionsContext}
 
 CONCEPTOS A CLASIFICAR:
 ${conceptList}
@@ -187,18 +290,21 @@ Responde SOLO con un JSON array. Cada elemento:
 export async function suggestCategory(
   description: string,
   type: 'income' | 'expense',
-  categories: CategoryInfo[]
+  categories: CategoryInfo[],
+  corrections?: AICorrection[]
 ): Promise<CategorizationSuggestion | null> {
   if (!description || description.trim().length < 3) return null
 
   const model = getModel()
   const relevantCategories = categories.filter(c => c.type === type)
   const categoryContext = buildCategoryContext(relevantCategories)
+  const correctionsContext = corrections ? buildCorrectionsContext(corrections.filter(c => c.type === type)) : ''
 
   const prompt = `Eres un asistente contable de un club deportivo español. Clasifica esta transacción en la categoría más adecuada.
 
 CATEGORÍAS DE ${type === 'income' ? 'INGRESOS' : 'GASTOS'}:
 ${categoryContext}
+${correctionsContext}
 
 TRANSACCIÓN: "${description}"
 

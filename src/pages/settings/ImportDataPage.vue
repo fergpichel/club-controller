@@ -708,7 +708,7 @@ import { useTransactionsStore } from 'src/stores/transactions'
 import { logger } from 'src/utils/logger'
 import { formatCurrency } from 'src/utils/formatters'
 import { useSelectFilter } from 'src/composables/useSelectFilter'
-import { isAIAvailable, suggestCategoriesBatch, type CategoryInfo } from 'src/services/aiCategorization'
+import { isAIAvailable, suggestCategoriesBatch, loadCorrections, type CategoryInfo } from 'src/services/aiCategorization'
 import IconPicker from 'src/components/IconPicker.vue'
 
 const $q = useQuasar()
@@ -917,7 +917,8 @@ async function aiAutoCategorizeImport() {
     const categories = buildCategoryInfoList()
     const concepts = unmapped.map(g => ({ concept: g.concepto, type: g.type }))
 
-    const suggestions = await suggestCategoriesBatch(concepts, categories)
+    const corrections = await loadCorrections()
+    const suggestions = await suggestCategoriesBatch(concepts, categories, corrections)
 
     let applied = 0
     for (let i = 0; i < suggestions.length; i++) {

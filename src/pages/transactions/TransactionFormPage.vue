@@ -472,7 +472,7 @@ import type { PaymentMethod, Attachment, Season } from 'src/types';
 import { getSeasonOptions } from 'src/types';
 import { formatCurrency } from 'src/utils/formatters'
 import { useSelectFilter } from 'src/composables/useSelectFilter'
-import { isAIAvailable, suggestCategory, type CategoryInfo, type CategorizationSuggestion } from 'src/services/aiCategorization'
+import { isAIAvailable, suggestCategory, loadCorrections, type CategoryInfo, type CategorizationSuggestion } from 'src/services/aiCategorization'
 import { logger } from 'src/utils/logger'
 
 const props = defineProps<{
@@ -642,7 +642,8 @@ const debouncedAISuggest = useDebounceFn(async (desc: string) => {
         return { id: c.id, name: c.name, type: c.type, parentName: parent?.name }
       })
 
-    const result = await suggestCategory(desc, type, categories)
+    const corrections = await loadCorrections()
+    const result = await suggestCategory(desc, type, categories, corrections)
     if (result && result.categoryId && result.confidence >= 0.4) {
       aiSuggestion.value = result
     } else {
