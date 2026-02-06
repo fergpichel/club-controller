@@ -17,13 +17,29 @@
 
     <!-- Info -->
     <div class="transaction-info">
-      <p class="transaction-title">{{ transaction.description }}</p>
+      <p class="transaction-title" :class="{ 'is-masked-text': descriptionHidden }">
+        {{ descriptionHidden ? '••••••••••••••' : transaction.description }}
+      </p>
       <div class="transaction-meta">
         <span>{{ categoryName }}</span>
         <span v-if="transaction.teamName">{{ transaction.teamName }}</span>
         <span>{{ formatDateRelative(transaction.date) }}</span>
       </div>
     </div>
+
+    <!-- Reveal button (privacy mode) -->
+    <q-btn
+      v-if="descriptionHidden || isTemporarilyRevealed"
+      flat
+      round
+      dense
+      size="sm"
+      :icon="descriptionHidden ? 'visibility' : 'visibility_off'"
+      class="reveal-btn"
+      @click.stop="toggleReveal"
+    >
+      <q-tooltip>{{ descriptionHidden ? 'Mostrar concepto (5s)' : 'Ocultar concepto' }}</q-tooltip>
+    </q-btn>
 
     <!-- Amount & Status -->
     <div class="transaction-right">
@@ -57,7 +73,14 @@ const props = defineProps<{
 }>()
 
 const categoriesStore = useCategoriesStore()
-const { isSensitiveTransaction, canViewSensitive } = useSensitiveData()
+const {
+  isSensitiveTransaction,
+  canViewSensitive,
+  isDescriptionMasked,
+  revealDescription,
+  hideDescription,
+  isRevealed
+} = useSensitiveData()
 
 const category = computed(() => {
   return categoriesStore.getCategoryById(props.transaction.categoryId)
@@ -67,6 +90,20 @@ const category = computed(() => {
 const isMasked = computed(() => {
   return !canViewSensitive.value && isSensitiveTransaction(props.transaction)
 })
+
+/** Whether the description should be hidden (privacy / anti-curious mode) */
+const descriptionHidden = computed(() => isDescriptionMasked(props.transaction))
+
+/** Whether this item is in the temporary "revealed" state */
+const isTemporarilyRevealed = computed(() => isRevealed(props.transaction.id))
+
+function toggleReveal() {
+  if (descriptionHidden.value) {
+    revealDescription(props.transaction.id)
+  } else {
+    hideDescription(props.transaction.id)
+  }
+}
 
 const categoryName = computed(() => {
   return category.value?.name || props.transaction.categoryName || 'Sin categoría'
@@ -212,6 +249,25 @@ const categoryColor = computed(() => {
   font-weight: 600;
   padding: 2px 8px;
   border-radius: var(--radius-full);
+}
+
+.reveal-btn {
+  color: var(--color-text-muted);
+  flex-shrink: 0;
+  opacity: 0.6;
+  transition: opacity var(--duration-fast) var(--ease-out);
+
+  &:hover {
+    opacity: 1;
+    color: var(--color-accent);
+  }
+}
+
+.is-masked-text {
+  color: var(--color-text-muted) !important;
+  font-style: italic;
+  letter-spacing: 1px;
+  user-select: none;
 }
 
 .transaction-arrow {

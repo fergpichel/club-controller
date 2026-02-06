@@ -45,6 +45,26 @@
               <q-item-section side><q-toggle v-model="darkMode" color="primary" /></q-item-section>
             </q-item>
 
+            <!-- Privacy (only for roles that can see sensitive data) -->
+            <template v-if="canViewSensitive">
+              <q-separator spaced />
+              <q-item-label header class="settings-section-title">Privacidad</q-item-label>
+              <q-item class="settings-item">
+                <q-item-section avatar>
+                  <q-avatar size="36px" color="red-8" text-color="white" icon="visibility_off" />
+                </q-item-section>
+                <q-item-section>
+                  <q-item-label>Modo anticuriosos</q-item-label>
+                  <q-item-label caption>
+                    Oculta el concepto de transacciones sensibles. Pulsa el icono del ojo para revelar durante 5 segundos.
+                  </q-item-label>
+                </q-item-section>
+                <q-item-section side>
+                  <q-toggle v-model="privacyMode" color="red" />
+                </q-item-section>
+              </q-item>
+            </template>
+
             <q-separator spaced />
 
             <!-- About -->
@@ -297,16 +317,24 @@ import { useQuasar } from 'quasar'
 import { useAuthStore } from 'src/stores/auth'
 import { useTransactionsStore } from 'src/stores/transactions'
 import { useCatalogsStore } from 'src/stores/catalogs'
+import { useSensitiveData } from 'src/composables/useSensitiveData'
 import { logger } from 'src/utils/logger'
 
 const $q = useQuasar()
 const authStore = useAuthStore()
 const transactionsStore = useTransactionsStore()
 const catalogsStore = useCatalogsStore()
+const { canViewSensitive, privacyModeEnabled, setPrivacyMode } = useSensitiveData()
 
 // Tab state — default to 'club' for admins, 'account' for others
 const activeTab = ref(authStore.canManageSettings ? 'club' : 'account')
 const darkMode = ref($q.dark.isActive)
+
+// Privacy mode (anti-curious) — two-way binding with composable
+const privacyMode = computed({
+  get: () => privacyModeEnabled.value,
+  set: (val: boolean) => setPrivacyMode(val)
+})
 
 // Migration state
 const migrating = ref(false)

@@ -23,7 +23,21 @@
           <div class="amount" :class="transaction.type">
             {{ transaction.type === 'income' ? '+' : '-' }}{{ formatCurrency(transaction.amount) }}
           </div>
-          <div class="description">{{ transaction.description }}</div>
+          <div class="description" :class="{ 'is-masked-text': descriptionHidden }">
+            {{ descriptionHidden ? '••••••••••••••' : transaction.description }}
+            <q-btn
+              v-if="descriptionHidden || isTemporarilyRevealed"
+              flat
+              round
+              dense
+              size="sm"
+              :icon="descriptionHidden ? 'visibility' : 'visibility_off'"
+              class="reveal-btn-inline"
+              @click="toggleReveal"
+            >
+              <q-tooltip>{{ descriptionHidden ? 'Mostrar concepto (5s)' : 'Ocultar concepto' }}</q-tooltip>
+            </q-btn>
+          </div>
           <q-badge
             :color="statusColor"
             :label="statusLabel"
@@ -262,6 +276,7 @@ import { useQuasar } from 'quasar';
 import { useAuthStore } from 'src/stores/auth';
 import { useTransactionsStore } from 'src/stores/transactions';
 import { useCategoriesStore } from 'src/stores/categories';
+import { useSensitiveData } from 'src/composables/useSensitiveData';
 import type { Attachment } from 'src/types';
 import { formatCurrency, formatDateLong, formatDateTime } from 'src/utils/formatters'
 
@@ -276,6 +291,13 @@ const authStore = useAuthStore();
 const transactionsStore = useTransactionsStore();
 const categoriesStore = useCategoriesStore();
 
+const {
+  isDescriptionMasked,
+  revealDescription,
+  hideDescription,
+  isRevealed
+} = useSensitiveData();
+
 const loading = ref(false);
 
 const transactionId = computed(() => props.id || route.params.id as string);
@@ -283,6 +305,26 @@ const transactionId = computed(() => props.id || route.params.id as string);
 const transaction = computed(() => {
   return transactionsStore.getTransactionById(transactionId.value);
 });
+
+/** Whether the description should be hidden (privacy mode) */
+const descriptionHidden = computed(() => {
+  if (!transaction.value) return false;
+  return isDescriptionMasked(transaction.value);
+});
+
+const isTemporarilyRevealed = computed(() => {
+  if (!transaction.value) return false;
+  return isRevealed(transaction.value.id);
+});
+
+function toggleReveal() {
+  if (!transaction.value) return;
+  if (descriptionHidden.value) {
+    revealDescription(transaction.value.id);
+  } else {
+    hideDescription(transaction.value.id);
+  }
+}
 
 const category = computed(() => {
   if (!transaction.value) return null;
@@ -434,6 +476,28 @@ onMounted(async () => {
     font-size: 1.1rem;
     color: var(--color-on-surface);
     margin-top: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+
+    &.is-masked-text {
+      color: var(--color-text-muted);
+      font-style: italic;
+      letter-spacing: 1px;
+      user-select: none;
+    }
+  }
+
+  .reveal-btn-inline {
+    color: var(--color-text-muted);
+    opacity: 0.6;
+    transition: opacity 0.2s ease;
+
+    &:hover {
+      opacity: 1;
+      color: var(--color-accent, #635BFF);
+    }
   }
 }
 

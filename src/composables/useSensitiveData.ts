@@ -1,7 +1,24 @@
-import { computed } from 'vue'
+import { computed, ref, reactive } from 'vue'
 import { useAuthStore } from 'src/stores/auth'
 import { useCategoriesStore } from 'src/stores/categories'
 import type { Transaction } from 'src/types'
+
+/**
+ * Privacy mode key in localStorage.
+ * When active, descriptions of sensitive-category transactions are hidden
+ * behind a blur/mask. Users with `canViewSensitive` can toggle the mode
+ * on/off and temporarily reveal individual descriptions (auto-hides after 5 s).
+ */
+const PRIVACY_MODE_KEY = 'privacyMode'
+
+/**
+ * Shared reactive state so every component using this composable
+ * sees the same privacyMode toggle and the same reveal timers.
+ */
+const privacyModeEnabled = ref<boolean>(
+  localStorage.getItem(PRIVACY_MODE_KEY) === 'true'
+)
+const revealedIds = reactive(new Map<string, ReturnType<typeof setTimeout>>())
 
 /**
  * Composable to handle sensitive data visibility.
@@ -9,9 +26,9 @@ import type { Transaction } from 'src/types'
  * Categories marked as `isSensitive` have their amounts hidden for
  * users without the `canViewSensitive` permission (editor, employee, viewer).
  *
- * - Amounts are replaced with `null` → the UI should show "***" or "Restringido"
- * - The transaction itself is still visible (description, date, etc.)
- * - Totals in stats exclude sensitive amounts for those users
+ * When **privacy mode** is active (only available for canViewSensitive users),
+ * the transaction description is masked too, even though the user *can* see it.
+ * A per-transaction eye-toggle reveals it for 5 seconds.
  */
 export function useSensitiveData() {
   const authStore = useAuthStore()
@@ -88,12 +105,79 @@ export function useSensitiveData() {
       .reduce((sum, t) => sum + t.amount, 0)
   }
 
+  // ─── Privacy mode (anti-curious) ───────────────────────────────────
+
+  /** Toggle privacy mode and persist to localStorage */
+  function setPrivacyMode(enabled: boolean) {
+    privacyModeEnabled.value = enabled
+    localStorage.setItem(PRIVACY_MODE_KEY, String(enabled))
+    // When disabling, clear all pending reveals
+    if (!enabled) {
+      for (const [id, timer] of revealedIds) {
+        clearTimeout(timer)
+        revealedIds.delete(id)
+      }
+    }
+  }
+
+  /**
+   * Whether a transaction's description should be masked right now.
+   * True when:
+   *   - privacy mode is ON
+   *   - the user CAN view sensitive data (otherwise amount is masked, not description)
+   *   - the transaction belongs to a sensitive category
+   *   - the transaction hasn't been temporarily revealed
+   */
+  function isDescriptionMasked(transaction: Transaction): boolean {
+    if (!privacyModeEnabled.value) return false
+    if (!canViewSensitive.value) return false
+    if (!isSensitiveTransaction(transaction)) return false
+    return !revealedIds.has(transaction.id)
+  }
+
+  /**
+   * Temporarily reveal a masked description for `duration` ms (default 5 000).
+   * After the timer expires the description auto-hides.
+   */
+  function revealDescription(transactionId: string, duration = 5000) {
+    // Clear any existing timer for this id
+    if (revealedIds.has(transactionId)) {
+      clearTimeout(revealedIds.get(transactionId)!)
+    }
+
+    const timer = setTimeout(() => {
+      revealedIds.delete(transactionId)
+    }, duration)
+
+    revealedIds.set(transactionId, timer)
+  }
+
+  /** Hide a previously revealed description immediately */
+  function hideDescription(transactionId: string) {
+    if (revealedIds.has(transactionId)) {
+      clearTimeout(revealedIds.get(transactionId)!)
+      revealedIds.delete(transactionId)
+    }
+  }
+
+  /** Whether this transaction's description is currently revealed (temporary) */
+  function isRevealed(transactionId: string): boolean {
+    return revealedIds.has(transactionId)
+  }
+
   return {
     canViewSensitive,
     sensitiveCategoryIds,
     isSensitiveTransaction,
     getDisplayAmount,
     formatSensitiveAmount,
-    getVisibleTotal
+    getVisibleTotal,
+    // Privacy mode
+    privacyModeEnabled,
+    setPrivacyMode,
+    isDescriptionMasked,
+    revealDescription,
+    hideDescription,
+    isRevealed
   }
 }

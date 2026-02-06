@@ -41,7 +41,21 @@
                     {{ transaction.type === 'income' ? '+' : '-' }}{{ formatCurrency(transaction.amount) }}
                   </span>
                 </div>
-                <div class="transaction-description">{{ transaction.description }}</div>
+                <div class="transaction-description" :class="{ 'is-masked-text': isDescriptionMasked(transaction) }">
+                  {{ isDescriptionMasked(transaction) ? '••••••••••••••' : transaction.description }}
+                  <q-btn
+                    v-if="isDescriptionMasked(transaction) || isRevealed(transaction.id)"
+                    flat
+                    round
+                    dense
+                    size="sm"
+                    :icon="isDescriptionMasked(transaction) ? 'visibility' : 'visibility_off'"
+                    class="reveal-btn-inline"
+                    @click.stop="toggleReveal(transaction)"
+                  >
+                    <q-tooltip>{{ isDescriptionMasked(transaction) ? 'Mostrar (5s)' : 'Ocultar' }}</q-tooltip>
+                  </q-btn>
+                </div>
                 <div class="transaction-meta">
                   <q-chip dense size="sm" :style="{ backgroundColor: getCategoryColor(transaction.categoryId) + '20', color: getCategoryColor(transaction.categoryId) }">
                     {{ transaction.categoryName || 'Sin categoría' }}
@@ -122,11 +136,27 @@ import { computed, onMounted } from 'vue';
 import { useQuasar } from 'quasar';
 import { useTransactionsStore } from 'src/stores/transactions';
 import { useCategoriesStore } from 'src/stores/categories';
+import { useSensitiveData } from 'src/composables/useSensitiveData';
+import type { Transaction } from 'src/types';
 import { formatCurrency, formatDateCompact } from 'src/utils/formatters'
 
 const $q = useQuasar();
 const transactionsStore = useTransactionsStore();
 const categoriesStore = useCategoriesStore();
+const {
+  isDescriptionMasked,
+  revealDescription,
+  hideDescription,
+  isRevealed
+} = useSensitiveData();
+
+function toggleReveal(transaction: Transaction) {
+  if (isDescriptionMasked(transaction)) {
+    revealDescription(transaction.id);
+  } else {
+    hideDescription(transaction.id);
+  }
+}
 
 const pendingTransactions = computed(() => transactionsStore.pendingTransactions);
 
@@ -227,6 +257,27 @@ onMounted(async () => {
     font-size: 1rem;
     font-weight: 500;
     margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+
+    &.is-masked-text {
+      color: var(--color-text-muted, #888);
+      font-style: italic;
+      letter-spacing: 1px;
+      user-select: none;
+    }
+  }
+
+  .reveal-btn-inline {
+    color: var(--color-text-muted, #888);
+    opacity: 0.6;
+    transition: opacity 0.2s ease;
+
+    &:hover {
+      opacity: 1;
+      color: var(--color-accent, #635BFF);
+    }
   }
 
   .transaction-meta {
