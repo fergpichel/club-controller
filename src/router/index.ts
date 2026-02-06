@@ -58,6 +58,13 @@ export default route(function (/* { store, ssrContext } */) {
       return;
     }
     
+    // If user still needs setup (no club yet), skip role-based checks
+    // — the needsSetup guard above already ensures they can only reach /setup.
+    if (authStore.needsSetup) {
+      next();
+      return;
+    }
+
     // Role-based access checks
     if (to.meta.requiresSettings && !authStore.canManageSettings) {
       next({ name: 'dashboard' });
