@@ -123,14 +123,16 @@ export const useAuthStore = defineStore('auth', () => {
     error.value = null
 
     try {
-      await signInWithEmailAndPassword(auth, email, password)
+      const result = await signInWithEmailAndPassword(auth, email, password)
+      // Await setUser so user.value is populated before we return true;
+      // otherwise a race with onAuthStateChanged can leave user.value null
+      // when the navigation guard runs.
+      await setUser(result.user)
       return true
     } catch (e: unknown) {
       const firebaseError = e as { code?: string }
       error.value = getAuthErrorMessage(firebaseError.code || '')
       return false
-    } finally {
-      loading.value = false
     }
   }
 
@@ -140,8 +142,10 @@ export const useAuthStore = defineStore('auth', () => {
 
     try {
       const provider = new GoogleAuthProvider()
-      await signInWithPopup(auth, provider)
-      // onAuthStateChanged → setUser() handles the rest
+      const result = await signInWithPopup(auth, provider)
+      // Await setUser so user.value is populated before we return true;
+      // otherwise the navigation guard sees isAuthenticated=false and bounces to /login.
+      await setUser(result.user)
       return true
     } catch (e: unknown) {
       const firebaseError = e as { code?: string }
@@ -151,8 +155,6 @@ export const useAuthStore = defineStore('auth', () => {
       }
       error.value = getAuthErrorMessage(firebaseError.code || '')
       return false
-    } finally {
-      loading.value = false
     }
   }
 
