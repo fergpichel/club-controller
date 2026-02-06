@@ -2,6 +2,8 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import {
   signInWithEmailAndPassword,
+  signInWithPopup,
+  GoogleAuthProvider,
   createUserWithEmailAndPassword,
   signOut,
   sendPasswordResetEmail,
@@ -130,6 +132,28 @@ export const useAuthStore = defineStore('auth', () => {
       return true
     } catch (e: unknown) {
       const firebaseError = e as { code?: string }
+      error.value = getAuthErrorMessage(firebaseError.code || '')
+      return false
+    } finally {
+      loading.value = false
+    }
+  }
+
+  async function loginWithGoogle() {
+    loading.value = true
+    error.value = null
+
+    try {
+      const provider = new GoogleAuthProvider()
+      await signInWithPopup(auth, provider)
+      // onAuthStateChanged → setUser() will handle the rest
+      return true
+    } catch (e: unknown) {
+      const firebaseError = e as { code?: string }
+      if (firebaseError.code === 'auth/popup-closed-by-user') {
+        // User closed the popup, not really an error
+        return false
+      }
       error.value = getAuthErrorMessage(firebaseError.code || '')
       return false
     } finally {
@@ -496,6 +520,7 @@ export const useAuthStore = defineStore('auth', () => {
     clearUser,
     setUnsubscribe,
     login,
+    loginWithGoogle,
     register,
     registerWithInvitation,
     logout,
