@@ -1,166 +1,174 @@
 <template>
   <div class="setup-container">
-    <q-card class="setup-card">
-      <!-- Header -->
-      <q-card-section class="text-center">
-        <div class="brand-logo q-mb-sm">
-          <q-icon name="sports_soccer" size="40px" color="primary" />
+    <div class="setup-content animate-in">
+      <!-- Brand -->
+      <div class="brand-section">
+        <div class="brand-logo">
+          <q-icon name="sports_soccer" size="32px" />
         </div>
-        <h2 class="setup-title">¡Bienvenido a Grootter Finance!</h2>
-        <p class="setup-subtitle">
-          Hola <strong>{{ authStore.user?.displayName }}</strong>, configura tu cuenta para continuar.
-        </p>
-      </q-card-section>
+        <h1 class="brand-name">Grootter Finance</h1>
+        <p class="brand-tagline">Configura tu cuenta para continuar</p>
+      </div>
 
-      <q-separator />
+      <!-- Setup Card -->
+      <div class="setup-card">
+        <!-- Step: Choose path -->
+        <template v-if="step === 'choose'">
+          <div class="card-header">
+            <h2>¡Bienvenido!</h2>
+            <p>
+              Hola <strong>{{ authStore.user?.displayName }}</strong>, ¿qué deseas hacer?
+            </p>
+          </div>
 
-      <!-- Step: Choose path -->
-      <q-card-section v-if="step === 'choose'">
-        <div class="options-grid">
-          <!-- Option: Create Club -->
-          <button
-            v-if="registrationOpen"
-            class="option-card"
-            @click="step = 'create'"
-          >
-            <q-icon name="add_business" size="48px" color="primary" />
-            <h3>Crear un club nuevo</h3>
-            <p>Soy administrador y quiero registrar mi club</p>
+          <div class="options-section">
+            <div class="options-grid">
+              <!-- Option: Create Club -->
+              <button
+                v-if="registrationOpen"
+                class="option-card"
+                @click="step = 'create'"
+              >
+                <div class="option-icon option-icon--brand">
+                  <q-icon name="add_business" size="28px" />
+                </div>
+                <h3>Crear un club nuevo</h3>
+                <p>Soy administrador y quiero registrar mi club</p>
+              </button>
+
+              <!-- Option: Join via invitation -->
+              <button class="option-card" @click="step = 'join'">
+                <div class="option-icon option-icon--teal">
+                  <q-icon name="group_add" size="28px" />
+                </div>
+                <h3>Unirme a un club</h3>
+                <p>Tengo una invitación de un club existente</p>
+              </button>
+            </div>
+
+            <transition name="slide-fade">
+              <div v-if="!registrationOpen" class="info-banner info-banner--warning">
+                <q-icon name="info" size="20px" />
+                <span>El registro de nuevos clubes está cerrado. Solo puedes unirte mediante invitación.</span>
+              </div>
+            </transition>
+          </div>
+        </template>
+
+        <!-- Step: Create Club -->
+        <template v-if="step === 'create'">
+          <div class="card-header">
+            <button class="back-btn" @click="step = 'choose'">
+              <q-icon name="arrow_back" size="18px" />
+              <span>Volver</span>
+            </button>
+            <h2>Crear tu club</h2>
+            <p>Serás el administrador del club con acceso completo.</p>
+          </div>
+
+          <q-form class="setup-form" @submit.prevent="handleCreateClub">
+            <div class="input-group">
+              <label>Nombre del club</label>
+              <div class="input-wrapper">
+                <q-icon name="sports_soccer" size="18px" class="input-icon" />
+                <input
+                  v-model="clubName"
+                  type="text"
+                  placeholder="Mi Club Deportivo"
+                  required
+                  autofocus
+                />
+              </div>
+            </div>
+
+            <transition name="slide-fade">
+              <div v-if="authStore.error" class="error-banner">
+                <q-icon name="error" size="18px" />
+                <span>{{ authStore.error }}</span>
+              </div>
+            </transition>
+
+            <button type="submit" class="primary-btn" :disabled="authStore.loading || !clubName">
+              <span v-if="!authStore.loading">Crear club</span>
+              <q-spinner v-else color="white" size="20px" />
+            </button>
+          </q-form>
+        </template>
+
+        <!-- Step: Join Club -->
+        <template v-if="step === 'join'">
+          <div class="card-header">
+            <button class="back-btn" @click="step = 'choose'">
+              <q-icon name="arrow_back" size="18px" />
+              <span>Volver</span>
+            </button>
+            <h2>Unirte a un club</h2>
+            <p>Introduce tu email para buscar invitaciones pendientes.</p>
+          </div>
+
+          <q-form class="setup-form" @submit.prevent="handleJoinClub">
+            <div class="input-group">
+              <label>Tu email</label>
+              <div class="input-wrapper">
+                <q-icon name="email" size="18px" class="input-icon" />
+                <input
+                  v-model="inviteEmail"
+                  type="email"
+                  placeholder="tu@email.com"
+                  required
+                  @blur="searchInvitation"
+                />
+                <q-spinner v-if="searching" size="18px" class="input-spinner" />
+              </div>
+            </div>
+
+            <transition name="slide-fade">
+              <div v-if="foundInvitation" class="info-banner info-banner--success">
+                <q-icon name="celebration" size="20px" />
+                <span>
+                  Invitación encontrada de <strong>{{ foundInvitation.invitedByName }}</strong>
+                  · Rol: <strong>{{ foundInvitation.role }}</strong>
+                </span>
+              </div>
+            </transition>
+
+            <transition name="slide-fade">
+              <div v-if="searchDone && !foundInvitation" class="info-banner info-banner--warning">
+                <q-icon name="search_off" size="20px" />
+                <span>No se encontraron invitaciones para este email.</span>
+              </div>
+            </transition>
+
+            <transition name="slide-fade">
+              <div v-if="authStore.error" class="error-banner">
+                <q-icon name="error" size="18px" />
+                <span>{{ authStore.error }}</span>
+              </div>
+            </transition>
+
+            <button
+              type="submit"
+              class="primary-btn primary-btn--teal"
+              :disabled="authStore.loading || !foundInvitation"
+            >
+              <span v-if="!authStore.loading">Unirme al club</span>
+              <q-spinner v-else color="white" size="20px" />
+            </button>
+          </q-form>
+        </template>
+
+        <!-- Footer -->
+        <div class="card-footer">
+          <button class="logout-btn" @click="handleLogout">
+            <q-icon name="logout" size="18px" />
+            <span>Cerrar sesión</span>
           </button>
-
-          <!-- Option: Join via invitation -->
-          <button class="option-card" @click="step = 'join'">
-            <q-icon name="group_add" size="48px" color="teal" />
-            <h3>Unirme a un club</h3>
-            <p>Tengo una invitación de un club existente</p>
-          </button>
         </div>
-
-        <div v-if="!registrationOpen" class="q-mt-md">
-          <q-banner class="bg-orange-1 text-orange-9" rounded>
-            <template #avatar><q-icon name="info" color="orange" /></template>
-            El registro de nuevos clubes está cerrado. Solo puedes unirte mediante invitación.
-          </q-banner>
-        </div>
-      </q-card-section>
-
-      <!-- Step: Create Club -->
-      <q-card-section v-if="step === 'create'">
-        <q-btn
-          flat
-          dense
-          icon="arrow_back"
-          label="Volver"
-          class="q-mb-md"
-          @click="step = 'choose'"
-        />
-
-        <h3 class="step-title">Crear tu club</h3>
-        <p class="step-description">
-          Serás el administrador del club con acceso completo.
-        </p>
-
-        <q-form class="setup-form" @submit.prevent="handleCreateClub">
-          <q-input
-            v-model="clubName"
-            label="Nombre del club"
-            outlined
-            autofocus
-            :rules="[val => !!val || 'Nombre del club requerido']"
-          >
-            <template #prepend>
-              <q-icon name="sports_soccer" />
-            </template>
-          </q-input>
-
-          <q-banner v-if="authStore.error" class="bg-negative text-white q-mb-md" rounded>
-            {{ authStore.error }}
-          </q-banner>
-
-          <q-btn
-            type="submit"
-            color="primary"
-            label="Crear club"
-            class="full-width"
-            size="lg"
-            :loading="authStore.loading"
-          />
-        </q-form>
-      </q-card-section>
-
-      <!-- Step: Join Club -->
-      <q-card-section v-if="step === 'join'">
-        <q-btn
-          flat
-          dense
-          icon="arrow_back"
-          label="Volver"
-          class="q-mb-md"
-          @click="step = 'choose'"
-        />
-
-        <h3 class="step-title">Unirte a un club</h3>
-        <p class="step-description">
-          Introduce tu email para buscar invitaciones pendientes.
-        </p>
-
-        <q-form class="setup-form" @submit.prevent="handleJoinClub">
-          <q-input
-            v-model="inviteEmail"
-            label="Tu email"
-            outlined
-            type="email"
-            :rules="[val => !!val || 'Email requerido']"
-            @blur="searchInvitation"
-          >
-            <template #prepend>
-              <q-icon name="email" />
-            </template>
-            <template v-if="searching" #append>
-              <q-spinner size="18px" />
-            </template>
-          </q-input>
-
-          <q-banner v-if="foundInvitation" class="bg-blue-1 text-blue-9 q-mb-md" rounded>
-            <template #avatar><q-icon name="celebration" color="blue" /></template>
-            Invitación encontrada de <strong>{{ foundInvitation.invitedByName }}</strong>
-            · Rol: <strong>{{ foundInvitation.role }}</strong>
-          </q-banner>
-
-          <q-banner v-if="searchDone && !foundInvitation" class="bg-orange-1 text-orange-9 q-mb-md" rounded>
-            <template #avatar><q-icon name="search_off" color="orange" /></template>
-            No se encontraron invitaciones para este email.
-          </q-banner>
-
-          <q-banner v-if="authStore.error" class="bg-negative text-white q-mb-md" rounded>
-            {{ authStore.error }}
-          </q-banner>
-
-          <q-btn
-            type="submit"
-            color="teal"
-            label="Unirme al club"
-            class="full-width"
-            size="lg"
-            :loading="authStore.loading"
-            :disable="!foundInvitation"
-          />
-        </q-form>
-      </q-card-section>
-
-      <q-separator />
+      </div>
 
       <!-- Footer -->
-      <q-card-section class="text-center">
-        <q-btn
-          flat
-          color="grey"
-          label="Cerrar sesión"
-          icon="logout"
-          @click="handleLogout"
-        />
-      </q-card-section>
-    </q-card>
+      <p class="setup-footer">© 2026 Grootter Finance. Todos los derechos reservados.</p>
+    </div>
   </div>
 </template>
 
@@ -236,67 +244,122 @@ onMounted(async () => {
     registrationOpen.value = true
   }
 
-  // If no registration open and only join, skip to join step
-  if (!registrationOpen.value) {
-    // Auto-search invitation if email exists
-    if (inviteEmail.value) {
-      searchInvitation()
-    }
+  // If no registration open, auto-search invitation
+  if (!registrationOpen.value && inviteEmail.value) {
+    searchInvitation()
   }
 })
 </script>
 
 <style lang="scss" scoped>
 .setup-container {
+  min-height: 100vh;
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 100vh;
-  padding: 24px;
+  padding: var(--space-6);
 }
 
-.setup-card {
+.setup-content {
   width: 100%;
-  max-width: 520px;
-  background: rgba(255, 255, 255, 0.95);
-  backdrop-filter: blur(20px);
-  border-radius: 24px;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-  padding: 8px;
+  max-width: 480px;
+}
+
+// Brand
+.brand-section {
+  text-align: center;
+  margin-bottom: var(--space-8);
 }
 
 .brand-logo {
   width: 64px;
   height: 64px;
-  border-radius: 16px;
-  background: linear-gradient(135deg, var(--color-primary), var(--color-primary-dark, #1a3a5c));
+  background: var(--gradient-brand);
+  border-radius: var(--radius-lg);
   display: flex;
   align-items: center;
   justify-content: center;
-  margin: 0 auto;
+  margin: 0 auto var(--space-4);
+  color: white;
+  box-shadow: 0 8px 24px rgba(10, 37, 64, 0.25);
+}
 
-  .q-icon {
-    color: white;
+.brand-name {
+  font-family: 'DM Sans', sans-serif;
+  font-size: 1.5rem;
+  font-weight: 800;
+  color: white;
+  margin: 0 0 var(--space-1);
+  letter-spacing: -0.02em;
+}
+
+.brand-tagline {
+  font-size: 0.875rem;
+  color: rgba(255, 255, 255, 0.75);
+  margin: 0;
+}
+
+// Card
+.setup-card {
+  background: var(--color-bg-elevated);
+  border-radius: var(--radius-2xl);
+  box-shadow: var(--shadow-2xl);
+  overflow: hidden;
+}
+
+.card-header {
+  padding: var(--space-8) var(--space-6) var(--space-5);
+
+  h2 {
+    font-family: 'DM Sans', sans-serif;
+    font-size: 1.375rem;
+    font-weight: 700;
+    color: var(--color-text-primary);
+    margin: 0 0 var(--space-1);
+  }
+
+  p {
+    font-size: 0.875rem;
+    color: var(--color-text-tertiary);
+    margin: 0;
+
+    strong {
+      color: var(--color-text-primary);
+      font-weight: 600;
+    }
   }
 }
 
-.setup-title {
-  font-size: 1.5rem;
-  font-weight: 700;
-  margin: 12px 0 4px;
-  color: var(--color-text-primary, #1a1a2e);
+// Back button
+.back-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  background: none;
+  border: none;
+  color: var(--color-text-tertiary);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  padding: 0;
+  margin-bottom: var(--space-4);
+  transition: color var(--duration-fast) var(--ease-out);
+
+  &:hover {
+    color: var(--color-accent);
+  }
 }
 
-.setup-subtitle {
-  color: var(--color-text-secondary, #666);
-  margin: 0;
-  font-size: 0.95rem;
+// Options
+.options-section {
+  padding: 0 var(--space-6) var(--space-6);
 }
 
 .options-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 16px;
+  gap: var(--space-4);
 
   @media (max-width: 480px) {
     grid-template-columns: 1fr;
@@ -304,51 +367,262 @@ onMounted(async () => {
 }
 
 .option-card {
-  background: white;
-  border: 2px solid var(--color-border, #e0e0e0);
-  border-radius: 16px;
-  padding: 24px 16px;
+  background: var(--color-bg-tertiary);
+  border: 1.5px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-6) var(--space-4);
   text-align: center;
   cursor: pointer;
-  transition: all 0.2s ease;
+  font-family: inherit;
+  transition: all var(--duration-normal) var(--ease-out);
 
   &:hover {
-    border-color: var(--color-primary, #635bff);
-    background: #f8f7ff;
+    border-color: var(--color-accent);
+    background: var(--color-bg-secondary);
     transform: translateY(-2px);
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+    box-shadow: var(--shadow-card-hover);
   }
 
   h3 {
-    font-size: 1rem;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 0.9375rem;
     font-weight: 600;
-    margin: 12px 0 4px;
-    color: var(--color-text-primary, #1a1a2e);
+    margin: var(--space-3) 0 var(--space-1);
+    color: var(--color-text-primary);
   }
 
   p {
-    font-size: 0.825rem;
-    color: var(--color-text-secondary, #666);
+    font-size: 0.8125rem;
+    color: var(--color-text-tertiary);
     margin: 0;
+    line-height: 1.4;
   }
 }
 
-.step-title {
-  font-size: 1.2rem;
-  font-weight: 600;
-  margin: 0 0 4px;
-  color: var(--color-text-primary, #1a1a2e);
+.option-icon {
+  width: 52px;
+  height: 52px;
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto;
+  color: white;
+
+  &--brand {
+    background: var(--gradient-accent);
+    box-shadow: 0 4px 12px rgba(99, 91, 255, 0.3);
+  }
+
+  &--teal {
+    background: linear-gradient(135deg, #00D4AA 0%, #00F5C4 100%);
+    box-shadow: 0 4px 12px rgba(0, 212, 170, 0.3);
+  }
 }
 
-.step-description {
-  color: var(--color-text-secondary, #666);
-  margin: 0 0 20px;
-  font-size: 0.9rem;
-}
-
+// Form
 .setup-form {
+  padding: 0 var(--space-6) var(--space-6);
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: var(--space-5);
+}
+
+.input-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+
+  label {
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--color-text-primary);
+  }
+}
+
+.input-wrapper {
+  display: flex;
+  align-items: center;
+  background: var(--color-bg-tertiary);
+  border: 1.5px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 0 var(--space-4);
+  transition: all var(--duration-fast) var(--ease-out);
+
+  &:focus-within {
+    border-color: var(--color-accent);
+    box-shadow: 0 0 0 3px rgba(99, 91, 255, 0.1);
+  }
+
+  .input-icon {
+    color: var(--color-text-tertiary);
+    flex-shrink: 0;
+  }
+
+  .input-spinner {
+    flex-shrink: 0;
+    color: var(--color-accent);
+  }
+
+  input {
+    flex: 1;
+    border: none;
+    background: transparent;
+    padding: var(--space-4) var(--space-3);
+    font-size: 0.9375rem;
+    font-family: inherit;
+    color: var(--color-text-primary);
+    outline: none;
+    min-width: 0;
+
+    &::placeholder {
+      color: var(--color-text-muted);
+    }
+  }
+}
+
+// Banners
+.info-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border-radius: var(--radius-md);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  line-height: 1.4;
+
+  .q-icon {
+    flex-shrink: 0;
+    margin-top: 1px;
+  }
+
+  &--success {
+    background: var(--color-success-bg);
+    color: var(--color-success-dark);
+  }
+
+  &--warning {
+    background: var(--color-warning-bg);
+    color: var(--color-warning-dark);
+  }
+}
+
+.error-banner {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  background: var(--color-danger-bg);
+  color: var(--color-danger);
+  border-radius: var(--radius-md);
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+// Buttons
+.primary-btn {
+  width: 100%;
+  height: 48px;
+  background: var(--gradient-accent);
+  color: white;
+  border: none;
+  border-radius: var(--radius-md);
+  font-size: 0.9375rem;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all var(--duration-fast) var(--ease-out);
+  box-shadow: var(--shadow-button);
+
+  &:hover:not(:disabled) {
+    box-shadow: 0 6px 20px rgba(99, 91, 255, 0.4);
+    transform: translateY(-1px);
+  }
+
+  &:active:not(:disabled) {
+    transform: translateY(0);
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  &--teal {
+    background: var(--gradient-success);
+    box-shadow: 0 4px 14px rgba(0, 212, 170, 0.35);
+
+    &:hover:not(:disabled) {
+      box-shadow: 0 6px 20px rgba(0, 212, 170, 0.4);
+    }
+  }
+}
+
+// Footer
+.card-footer {
+  padding: var(--space-4) var(--space-6);
+  background: var(--color-bg-tertiary);
+  border-top: 1px solid var(--color-border-light);
+  display: flex;
+  justify-content: center;
+}
+
+.logout-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  background: none;
+  border: none;
+  color: var(--color-text-tertiary);
+  font-size: 0.875rem;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-md);
+  transition: all var(--duration-fast) var(--ease-out);
+
+  &:hover {
+    color: var(--color-danger);
+    background: var(--color-danger-bg);
+  }
+}
+
+.setup-footer {
+  text-align: center;
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.5);
+  margin: var(--space-8) 0 0;
+}
+
+// Animations
+.animate-in {
+  animation: fadeInUp 0.6s var(--ease-out);
+}
+
+.slide-fade-enter-active {
+  transition: all 0.3s var(--ease-out);
+}
+
+.slide-fade-leave-active {
+  transition: all 0.2s var(--ease-out);
+}
+
+.slide-fade-enter-from,
+.slide-fade-leave-to {
+  opacity: 0;
+  transform: translateY(-8px);
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 </style>
