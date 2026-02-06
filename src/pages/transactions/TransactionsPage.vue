@@ -118,25 +118,41 @@
         </div>
       </div>
 
-      <!-- Quick tabs -->
-      <q-tabs
-        v-model="activeTab"
-        dense
-        class="text-grey-7 q-mb-md"
-        active-color="primary"
-        indicator-color="primary"
-        align="left"
-      >
-        <q-tab name="all" label="Todas" />
-        <q-tab name="income" label="Ingresos" />
-        <q-tab name="expense" label="Gastos" />
-        <q-tab v-if="authStore.canApprove" name="pending" label="Pendientes">
-          <q-badge v-if="pendingCount > 0" color="warning" floating>{{ pendingCount }}</q-badge>
-        </q-tab>
-        <q-tab name="uncategorized" label="Sin categorizar">
-          <q-badge v-if="uncategorizedCount > 0" color="amber" floating>{{ uncategorizedCount }}</q-badge>
-        </q-tab>
-      </q-tabs>
+      <!-- Quick tabs + AI button -->
+      <div class="tabs-row q-mb-md">
+        <q-tabs
+          v-model="activeTab"
+          dense
+          class="text-grey-7"
+          active-color="primary"
+          indicator-color="primary"
+          align="left"
+        >
+          <q-tab name="all" label="Todas" />
+          <q-tab name="income" label="Ingresos" />
+          <q-tab name="expense" label="Gastos" />
+          <q-tab v-if="authStore.canApprove" name="pending" label="Pendientes">
+            <q-badge v-if="pendingCount > 0" color="warning" floating>{{ pendingCount }}</q-badge>
+          </q-tab>
+          <q-tab name="uncategorized" label="Sin categorizar">
+            <q-badge v-if="uncategorizedCount > 0" color="amber" floating>{{ uncategorizedCount }}</q-badge>
+          </q-tab>
+        </q-tabs>
+        <q-btn
+          v-if="aiAvailable && activeTab === 'uncategorized' && filteredTransactions.length > 0"
+          :loading="aiCategorizing"
+          color="deep-purple"
+          icon="auto_awesome"
+          :label="aiCategorizing ? `${aiProgress}/${aiTotal}` : 'Auto-categorizar'"
+          no-caps
+          unelevated
+          size="sm"
+          class="ai-categorize-btn"
+          @click="aiAutoCategorizeUncategorized"
+        >
+          <q-tooltip>Usar IA para sugerir categorías</q-tooltip>
+        </q-btn>
+      </div>
 
       <!-- Loading state -->
       <div v-if="isLoading && filteredTransactions.length === 0" class="loading-state">
@@ -216,11 +232,111 @@
         </q-card-section>
       </q-card>
     </q-dialog>
+
+    <!-- AI Suggestions Review Dialog -->
+    <q-dialog v-model="showAISuggestions" persistent maximized transition-show="slide-up" transition-hide="slide-down">
+      <q-card class="ai-suggestions-card">
+        <q-card-section class="ai-suggestions-header">
+          <div class="row items-center">
+            <q-icon name="auto_awesome" color="deep-purple" size="28px" class="q-mr-sm" />
+            <div>
+              <div class="text-h6">Sugerencias de IA</div>
+              <div class="text-caption text-grey">Revisa y confirma las categorías sugeridas</div>
+            </div>
+            <q-space />
+            <q-btn flat round icon="close" @click="showAISuggestions = false" />
+          </div>
+        </q-card-section>
+
+        <q-separator />
+
+        <q-card-section class="ai-suggestions-body">
+          <q-scroll-area style="height: calc(100vh - 200px)">
+            <div
+              v-for="(s, idx) in aiSuggestions"
+              :key="s.transactionId"
+              class="ai-suggestion-row"
+              :class="{ accepted: s.accepted, rejected: s.rejected }"
+            >
+              <div class="suggestion-info">
+                <div class="suggestion-description">{{ s.description }}</div>
+                <div class="suggestion-amount" :class="s.type">
+                  {{ s.type === 'income' ? '+' : '-' }}{{ formatCurrency(s.amount) }}
+                </div>
+              </div>
+              <div class="suggestion-category">
+                <q-icon name="arrow_forward" size="16px" color="grey" class="q-mx-sm" />
+                <q-chip
+                  v-if="s.categoryName"
+                  :color="s.confidence > 0.7 ? 'deep-purple-2' : 'amber-2'"
+                  text-color="dark"
+                  size="sm"
+                  icon="auto_awesome"
+                >
+                  {{ s.categoryName }}
+                  <q-badge :color="s.confidence > 0.7 ? 'deep-purple' : 'amber'" floating>
+                    {{ Math.round(s.confidence * 100) }}%
+                  </q-badge>
+                </q-chip>
+                <span v-else class="text-grey-6">Sin sugerencia</span>
+              </div>
+              <div class="suggestion-actions">
+                <q-btn
+                  v-if="s.categoryId && !s.accepted && !s.rejected"
+                  flat round dense icon="check" color="positive" size="sm"
+                  @click="acceptSuggestion(idx)"
+                >
+                  <q-tooltip>Aceptar</q-tooltip>
+                </q-btn>
+                <q-btn
+                  v-if="s.categoryId && !s.accepted && !s.rejected"
+                  flat round dense icon="close" color="negative" size="sm"
+                  @click="rejectSuggestion(idx)"
+                >
+                  <q-tooltip>Rechazar</q-tooltip>
+                </q-btn>
+                <q-icon v-if="s.accepted" name="check_circle" color="positive" size="20px" />
+                <q-icon v-if="s.rejected" name="cancel" color="grey-5" size="20px" />
+              </div>
+            </div>
+          </q-scroll-area>
+        </q-card-section>
+
+        <q-separator />
+
+        <q-card-actions class="ai-suggestions-footer">
+          <div class="text-caption text-grey">
+            {{ acceptedCount }} aceptadas · {{ rejectedCount }} rechazadas · {{ pendingSuggestionCount }} pendientes
+          </div>
+          <q-space />
+          <q-btn
+            flat
+            label="Aceptar todas"
+            icon="done_all"
+            color="positive"
+            no-caps
+            :disable="pendingSuggestionCount === 0"
+            @click="acceptAllSuggestions"
+          />
+          <q-btn
+            unelevated
+            label="Aplicar aceptadas"
+            icon="save"
+            color="deep-purple"
+            no-caps
+            :loading="aiApplying"
+            :disable="acceptedCount === 0"
+            @click="applyAcceptedSuggestions"
+          />
+        </q-card-actions>
+      </q-card>
+    </q-dialog>
   </q-page>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from 'vue';
+import { useQuasar } from 'quasar';
 import { useDebounceFn } from '@vueuse/core';
 import { useAuthStore } from 'src/stores/auth';
 import { useTransactionsStore } from 'src/stores/transactions';
@@ -228,9 +344,12 @@ import { useCategoriesStore } from 'src/stores/categories';
 import { useTeamsStore } from 'src/stores/teams';
 import TransactionItem from 'src/components/TransactionItem.vue';
 import { useSelectFilter } from 'src/composables/useSelectFilter';
+import { isAIAvailable, suggestCategoriesBatch, type CategoryInfo } from 'src/services/aiCategorization';
+import { formatCurrency } from 'src/utils/formatters';
 import type { TransactionFilters, TransactionType, TransactionStatus } from 'src/types';
 import { getSeasonOptions, UNCATEGORIZED_CATEGORY_ID } from 'src/types';
 
+const $q = useQuasar();
 const authStore = useAuthStore();
 const transactionsStore = useTransactionsStore();
 const categoriesStore = useCategoriesStore();
@@ -403,6 +522,138 @@ watch(searchQuery, () => {
   debouncedSearch();
 });
 
+// === AI Auto-categorization ===
+const aiAvailable = isAIAvailable()
+const aiCategorizing = ref(false)
+const aiProgress = ref(0)
+const aiTotal = ref(0)
+const showAISuggestions = ref(false)
+const aiApplying = ref(false)
+
+interface AISuggestionItem {
+  transactionId: string
+  description: string
+  amount: number
+  type: 'income' | 'expense'
+  categoryId: string | null
+  categoryName: string | null
+  confidence: number
+  accepted: boolean
+  rejected: boolean
+}
+
+const aiSuggestions = ref<AISuggestionItem[]>([])
+
+const acceptedCount = computed(() => aiSuggestions.value.filter(s => s.accepted).length)
+const rejectedCount = computed(() => aiSuggestions.value.filter(s => s.rejected).length)
+const pendingSuggestionCount = computed(() =>
+  aiSuggestions.value.filter(s => s.categoryId && !s.accepted && !s.rejected).length
+)
+
+function buildCategoryInfoList(): CategoryInfo[] {
+  return categoriesStore.allActiveCategories.map(c => {
+    const parent = c.parentId ? categoriesStore.getCategoryById(c.parentId) : null
+    return {
+      id: c.id,
+      name: c.name,
+      type: c.type,
+      parentName: parent?.name
+    }
+  })
+}
+
+async function aiAutoCategorizeUncategorized() {
+  const uncategorized = filteredTransactions.value
+  if (uncategorized.length === 0) return
+
+  aiCategorizing.value = true
+  aiProgress.value = 0
+  aiTotal.value = uncategorized.length
+
+  try {
+    const categories = buildCategoryInfoList()
+    const concepts = uncategorized.map(t => ({
+      concept: t.description,
+      type: t.type
+    }))
+
+    const suggestions = await suggestCategoriesBatch(concepts, categories)
+
+    aiSuggestions.value = uncategorized.map((t, i) => ({
+      transactionId: t.id,
+      description: t.description,
+      amount: t.amount,
+      type: t.type,
+      categoryId: suggestions[i]?.categoryId || null,
+      categoryName: suggestions[i]?.categoryName || null,
+      confidence: suggestions[i]?.confidence || 0,
+      accepted: false,
+      rejected: false
+    }))
+
+    aiProgress.value = uncategorized.length
+    showAISuggestions.value = true
+  } catch (e) {
+    console.error('[AI] Uncategorized auto-categorize error:', e)
+    $q.notify({
+      type: 'negative',
+      message: 'Error al auto-categorizar. Verifica la API key de Gemini.'
+    })
+  } finally {
+    aiCategorizing.value = false
+  }
+}
+
+function acceptSuggestion(idx: number) {
+  aiSuggestions.value[idx].accepted = true
+  aiSuggestions.value[idx].rejected = false
+}
+
+function rejectSuggestion(idx: number) {
+  aiSuggestions.value[idx].rejected = true
+  aiSuggestions.value[idx].accepted = false
+}
+
+function acceptAllSuggestions() {
+  for (const s of aiSuggestions.value) {
+    if (s.categoryId && !s.rejected) {
+      s.accepted = true
+    }
+  }
+}
+
+async function applyAcceptedSuggestions() {
+  const accepted = aiSuggestions.value.filter(s => s.accepted && s.categoryId)
+  if (accepted.length === 0) return
+
+  aiApplying.value = true
+  try {
+    for (const s of accepted) {
+      const cat = categoriesStore.getCategoryById(s.categoryId!)
+      if (cat) {
+        await transactionsStore.updateTransaction(s.transactionId, {
+          categoryId: s.categoryId!,
+          categoryName: cat.name
+        })
+      }
+    }
+
+    $q.notify({
+      type: 'positive',
+      icon: 'auto_awesome',
+      message: `${accepted.length} transacciones categorizadas`
+    })
+
+    showAISuggestions.value = false
+    fetchWithFilters() // Refresh the list
+  } catch (e) {
+    console.error('[AI] Apply suggestions error:', e)
+    $q.notify({ type: 'negative', message: 'Error al aplicar sugerencias' })
+  } finally {
+    aiApplying.value = false
+  }
+}
+
 // Initial load
 onMounted(async () => {
   // Ensure categories and teams are loaded for filters
@@ -514,6 +765,94 @@ onMounted(async () => {
   .empty-description {
     color: var(--color-text-tertiary);
     margin-bottom: var(--space-6);
+  }
+}
+
+.tabs-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+
+  .q-tabs {
+    flex: 1;
+  }
+
+  .ai-categorize-btn {
+    white-space: nowrap;
+    border-radius: var(--radius-full);
+    font-weight: 600;
+    flex-shrink: 0;
+  }
+}
+
+// === AI Suggestions Dialog ===
+.ai-suggestions-card {
+  .ai-suggestions-header {
+    background: var(--color-bg-elevated);
+  }
+
+  .ai-suggestions-body {
+    padding: 0;
+  }
+
+  .ai-suggestion-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--color-border-light);
+    transition: background 0.2s ease;
+
+    &:hover {
+      background: var(--color-bg-tertiary);
+    }
+
+    &.accepted {
+      background: rgba(76, 175, 80, 0.06);
+    }
+
+    &.rejected {
+      opacity: 0.4;
+    }
+
+    .suggestion-info {
+      flex: 1;
+      min-width: 0;
+
+      .suggestion-description {
+        font-weight: 500;
+        font-size: 0.875rem;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .suggestion-amount {
+        font-family: 'Space Grotesk', sans-serif;
+        font-size: 0.8rem;
+        font-weight: 600;
+
+        &.income { color: var(--color-positive); }
+        &.expense { color: var(--color-negative); }
+      }
+    }
+
+    .suggestion-category {
+      display: flex;
+      align-items: center;
+      min-width: 180px;
+    }
+
+    .suggestion-actions {
+      display: flex;
+      gap: 4px;
+      min-width: 60px;
+      justify-content: flex-end;
+    }
+  }
+
+  .ai-suggestions-footer {
+    padding: 12px 16px;
   }
 }
 

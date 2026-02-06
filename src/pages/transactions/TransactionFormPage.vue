@@ -53,6 +53,33 @@
               </template>
             </q-input>
 
+            <!-- AI Category Suggestion -->
+            <transition name="fade">
+              <div v-if="aiSuggestion && !parentCategoryId" class="ai-suggestion-banner q-mb-md">
+                <q-icon name="auto_awesome" color="deep-purple" size="18px" />
+                <span class="ai-suggestion-text">
+                  Sugerencia: <strong>{{ aiSuggestion.categoryName }}</strong>
+                </span>
+                <q-badge :color="aiSuggestion.confidence > 0.7 ? 'deep-purple' : 'amber'" class="q-ml-xs">
+                  {{ Math.round(aiSuggestion.confidence * 100) }}%
+                </q-badge>
+                <q-btn
+                  flat dense no-caps size="sm" color="deep-purple"
+                  label="Aplicar"
+                  class="q-ml-sm"
+                  @click="applyAISuggestion"
+                />
+                <q-btn
+                  flat dense round size="xs" icon="close" color="grey"
+                  @click="aiSuggestion = null"
+                />
+              </div>
+            </transition>
+            <div v-if="aiSuggesting" class="ai-suggesting-hint q-mb-sm">
+              <q-spinner-dots size="14px" color="deep-purple" />
+              <span>Analizando descripción...</span>
+            </div>
+
             <q-select
               v-model="parentCategoryId"
               :options="parentCategoryFilter.options.value"
@@ -432,10 +459,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, watch, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useQuasar } from 'quasar';
 import { format } from 'date-fns';
+import { useDebounceFn } from '@vueuse/core';
 import { useTransactionsStore } from 'src/stores/transactions';
 import { useCategoriesStore } from 'src/stores/categories';
 import { useTeamsStore } from 'src/stores/teams';
@@ -444,6 +472,7 @@ import type { PaymentMethod, Attachment, Season } from 'src/types';
 import { getSeasonOptions } from 'src/types';
 import { formatCurrency } from 'src/utils/formatters'
 import { useSelectFilter } from 'src/composables/useSelectFilter'
+import { isAIAvailable, suggestCategory, type CategoryInfo, type CategorizationSuggestion } from 'src/services/aiCategorization'
 import { logger } from 'src/utils/logger'
 
 const props = defineProps<{
@@ -591,6 +620,67 @@ const projectFilter = useSelectFilter(projectOptions)
 const eventFilter = useSelectFilter(eventOptions)
 const sponsorFilter = useSelectFilter(sponsorOptions)
 const supplierFilter = useSelectFilter(supplierOptions)
+
+// === AI Category Suggestion ===
+const aiSuggestion = ref<CategorizationSuggestion | null>(null)
+const aiSuggesting = ref(false)
+
+const debouncedAISuggest = useDebounceFn(async (desc: string) => {
+  if (!isAIAvailable() || desc.length < 5 || parentCategoryId.value || isEditing.value) {
+    aiSuggestion.value = null
+    aiSuggesting.value = false
+    return
+  }
+
+  aiSuggesting.value = true
+  try {
+    const type = transactionType.value as 'income' | 'expense'
+    const categories: CategoryInfo[] = categoriesStore.allActiveCategories
+      .filter(c => c.type === type)
+      .map(c => {
+        const parent = c.parentId ? categoriesStore.getCategoryById(c.parentId) : null
+        return { id: c.id, name: c.name, type: c.type, parentName: parent?.name }
+      })
+
+    const result = await suggestCategory(desc, type, categories)
+    if (result && result.categoryId && result.confidence >= 0.4) {
+      aiSuggestion.value = result
+    } else {
+      aiSuggestion.value = null
+    }
+  } catch (e) {
+    logger.error('[AI] Suggestion error:', e)
+    aiSuggestion.value = null
+  } finally {
+    aiSuggesting.value = false
+  }
+}, 1200)
+
+watch(description, (val) => {
+  if (val && val.length >= 5 && !parentCategoryId.value && !isEditing.value && isAIAvailable()) {
+    debouncedAISuggest(val)
+  } else {
+    aiSuggestion.value = null
+    aiSuggesting.value = false
+  }
+})
+
+function applyAISuggestion() {
+  if (!aiSuggestion.value?.categoryId) return
+
+  const cat = categoriesStore.getCategoryById(aiSuggestion.value.categoryId)
+  if (!cat) return
+
+  if (cat.parentId) {
+    // It's a subcategory — set parent first, then subcategory
+    parentCategoryId.value = cat.parentId
+    subcategoryId.value = cat.id
+  } else {
+    parentCategoryId.value = cat.id
+    subcategoryId.value = null
+  }
+  aiSuggestion.value = null
+}
 
 // Methods
 function removeExistingAttachment(attachmentId: string) {
@@ -755,6 +845,44 @@ onMounted(async () => {
 .page-content {
   max-width: 600px;
   margin: 0 auto;
+}
+
+// === AI Suggestion Banner ===
+.ai-suggestion-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: rgba(103, 58, 183, 0.08);
+  border: 1px solid rgba(103, 58, 183, 0.2);
+  border-radius: var(--radius-md);
+  font-size: 0.8125rem;
+  color: var(--color-text-secondary);
+
+  .ai-suggestion-text {
+    flex: 1;
+
+    strong {
+      color: var(--color-text-primary);
+    }
+  }
+}
+
+.ai-suggesting-hint {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+}
+
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.3s ease;
+}
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
 }
 
 .amount-card {

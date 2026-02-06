@@ -324,20 +324,36 @@
           </p>
         </div>
 
-        <!-- Quick filters -->
-        <div class="mapping-filters">
-          <button :class="['filter-pill', { active: conceptoFilter === 'all' }]" @click="conceptoFilter = 'all'">
-            Todos ({{ conceptoGroups.length }})
-          </button>
-          <button :class="['filter-pill', { active: conceptoFilter === 'unmapped' }]" @click="conceptoFilter = 'unmapped'">
-            <q-icon name="warning" size="14px" /> Sin categoría ({{ unmappedCount }})
-          </button>
-          <button :class="['filter-pill income', { active: conceptoFilter === 'income' }]" @click="conceptoFilter = 'income'">
-            <q-icon name="arrow_upward" size="14px" /> Ingresos ({{ incomeCount }})
-          </button>
-          <button :class="['filter-pill expense', { active: conceptoFilter === 'expense' }]" @click="conceptoFilter = 'expense'">
-            <q-icon name="arrow_downward" size="14px" /> Gastos ({{ expenseCount }})
-          </button>
+        <!-- AI Auto-categorize + Quick filters -->
+        <div class="mapping-toolbar">
+          <div class="mapping-filters">
+            <button :class="['filter-pill', { active: conceptoFilter === 'all' }]" @click="conceptoFilter = 'all'">
+              Todos ({{ conceptoGroups.length }})
+            </button>
+            <button :class="['filter-pill', { active: conceptoFilter === 'unmapped' }]" @click="conceptoFilter = 'unmapped'">
+              <q-icon name="warning" size="14px" /> Sin categoría ({{ unmappedCount }})
+            </button>
+            <button :class="['filter-pill income', { active: conceptoFilter === 'income' }]" @click="conceptoFilter = 'income'">
+              <q-icon name="arrow_upward" size="14px" /> Ingresos ({{ incomeCount }})
+            </button>
+            <button :class="['filter-pill expense', { active: conceptoFilter === 'expense' }]" @click="conceptoFilter = 'expense'">
+              <q-icon name="arrow_downward" size="14px" /> Gastos ({{ expenseCount }})
+            </button>
+          </div>
+          <q-btn
+            v-if="aiAvailable && unmappedCount > 0"
+            :loading="aiCategorizing"
+            color="deep-purple"
+            icon="auto_awesome"
+            :label="aiCategorizing ? `Categorizando... ${aiProgress}/${aiTotal}` : `Auto-categorizar (${unmappedCount})`"
+            no-caps
+            unelevated
+            size="sm"
+            class="ai-btn"
+            @click="aiAutoCategorizeImport"
+          >
+            <q-tooltip v-if="!aiCategorizing">Usar IA para sugerir categorías automáticamente</q-tooltip>
+          </q-btn>
         </div>
 
         <!-- Concepto list -->
@@ -692,6 +708,7 @@ import { useTransactionsStore } from 'src/stores/transactions'
 import { logger } from 'src/utils/logger'
 import { formatCurrency } from 'src/utils/formatters'
 import { useSelectFilter } from 'src/composables/useSelectFilter'
+import { isAIAvailable, suggestCategoriesBatch, type CategoryInfo } from 'src/services/aiCategorization'
 import IconPicker from 'src/components/IconPicker.vue'
 
 const $q = useQuasar()
@@ -866,6 +883,76 @@ const expenseCatOptions = computed(() => getCategoryOptions('expense'))
 const incomeCatFilter = useSelectFilter(incomeCatOptions)
 const expenseCatFilter = useSelectFilter(expenseCatOptions)
 const parentCatFilter = useSelectFilter(parentCategoryOptions)
+
+// === AI Auto-categorization ===
+const aiAvailable = isAIAvailable()
+const aiCategorizing = ref(false)
+const aiProgress = ref(0)
+const aiTotal = ref(0)
+
+function buildCategoryInfoList(): CategoryInfo[] {
+  return categoriesStore.allActiveCategories.map(c => {
+    const parent = c.parentId ? categoriesStore.getCategoryById(c.parentId) : null
+    return {
+      id: c.id,
+      name: c.name,
+      type: c.type,
+      parentName: parent?.name
+    }
+  })
+}
+
+async function aiAutoCategorizeImport() {
+  const unmapped = conceptoGroups.value
+    .map((g, idx) => ({ ...g, _idx: idx }))
+    .filter(g => !g.categoryId)
+
+  if (unmapped.length === 0) return
+
+  aiCategorizing.value = true
+  aiProgress.value = 0
+  aiTotal.value = unmapped.length
+
+  try {
+    const categories = buildCategoryInfoList()
+    const concepts = unmapped.map(g => ({ concept: g.concepto, type: g.type }))
+
+    const suggestions = await suggestCategoriesBatch(concepts, categories)
+
+    let applied = 0
+    for (let i = 0; i < suggestions.length; i++) {
+      const suggestion = suggestions[i]
+      const group = unmapped[i]
+
+      if (suggestion.categoryId && suggestion.confidence >= 0.4) {
+        // Verify the category actually exists and type matches
+        const cat = categoriesStore.getCategoryById(suggestion.categoryId)
+        if (cat && cat.type === group.type) {
+          conceptoGroups.value[group._idx].categoryId = suggestion.categoryId
+          importer.setConceptoGroup(group._idx, { categoryId: suggestion.categoryId })
+          applied++
+        }
+      }
+      aiProgress.value = i + 1
+    }
+
+    $q.notify({
+      type: applied > 0 ? 'positive' : 'info',
+      icon: 'auto_awesome',
+      message: applied > 0
+        ? `IA categorizó ${applied} de ${unmapped.length} conceptos`
+        : 'La IA no encontró categorías adecuadas para los conceptos'
+    })
+  } catch (e) {
+    logger.error('[AI] Import auto-categorize error:', e)
+    $q.notify({
+      type: 'negative',
+      message: 'Error al auto-categorizar. Verifica la API key de Gemini.'
+    })
+  } finally {
+    aiCategorizing.value = false
+  }
+}
 
 // === Methods ===
 function triggerFileInput() { fileInput.value?.click() }
@@ -1440,10 +1527,25 @@ function reset() {
   }
 }
 
+.mapping-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+
+  .ai-btn {
+    white-space: nowrap;
+    border-radius: var(--radius-full);
+    font-weight: 600;
+    letter-spacing: 0.01em;
+  }
+}
+
 .mapping-filters {
   display: flex;
   gap: 8px;
-  margin-bottom: 20px;
   flex-wrap: wrap;
 
   .filter-pill {
