@@ -87,6 +87,13 @@ service cloud.firestore {
       allow update: if isAdminOrManager(clubId);
 
       allow delete: if false; // Clubs cannot be deleted from client
+
+      // AI CORRECTIONS (feedback for categorization)
+      match /ai_corrections/{correctionId} {
+        allow read: if isAuth() && belongsToClub(clubId);
+        allow create: if isAuth() && belongsToClub(clubId);
+        allow update, delete: if false; // Corrections are append-only
+      }
     }
 
     // ──────────────────────────────────────────────
