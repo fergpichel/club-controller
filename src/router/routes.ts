@@ -114,6 +114,14 @@ const routes: RouteRecordRaw[] = [
         props: true
       },
 
+      // Financial Overview (Cuadro de Mando)
+      {
+        path: 'financial-overview',
+        name: 'financial-overview',
+        component: () => import('src/pages/analysis/FinancialOverviewPage.vue'),
+        meta: { requiresManager: true }
+      },
+
       // Profitability Analysis
       {
         path: 'profitability',

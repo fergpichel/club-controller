@@ -442,6 +442,7 @@ const visibleAdminNavItems = computed(() => {
 
   // Treasury, profitability, forecasts — anyone who can view stats (not employee)
   if (authStore.canViewStats) {
+    items.push({ name: 'financial-overview', icon: 'monitoring', label: 'Cuadro Mando', to: { name: 'financial-overview' } })
     items.push({ name: 'treasury', icon: 'show_chart', label: 'Tesorería', to: { name: 'treasury' } })
     items.push({ name: 'profitability', icon: 'account_balance_wallet', label: 'Rentabilidad', to: { name: 'profitability' } })
     items.push({ name: 'forecasts', icon: 'analytics', label: 'Previsiones', to: { name: 'forecasts' } })
