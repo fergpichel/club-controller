@@ -21,13 +21,14 @@ import {
 import { ref as storageRef, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage'
 import { db, storage } from 'src/boot/firebase'
 import { useAuthStore } from './auth'
+import { useCategoriesStore } from './categories'
 import type {
   Transaction,
   TransactionFilters,
   TransactionStatus,
   Attachment
 } from 'src/types'
-import { computeSeason, generateSearchKeywords, UNCATEGORIZED_CATEGORY_ID } from 'src/types'
+import { computeSeason, generateSearchKeywords } from 'src/types'
 import { startOfMonth, endOfMonth } from 'date-fns'
 import { logger } from 'src/utils/logger'
 
@@ -71,13 +72,12 @@ export const useTransactionsStore = defineStore('transactions', () => {
   )
 
   // Uncategorized transactions
-  const uncategorizedTransactions = computed(() =>
-    transactions.value.filter(t =>
-      !t.categoryId ||
-      t.categoryId === UNCATEGORIZED_CATEGORY_ID ||
-      t.categoryId === `${UNCATEGORIZED_CATEGORY_ID}_income`
+  const uncategorizedTransactions = computed(() => {
+    const categoriesStore = useCategoriesStore()
+    return transactions.value.filter(t =>
+      !t.categoryId || categoriesStore.isUncategorized(t.categoryId)
     )
-  )
+  })
 
   // Season-based filtering
   function getTransactionsBySeason(season: string) {

@@ -398,7 +398,7 @@ import { useSelectFilter } from 'src/composables/useSelectFilter';
 import { isAIAvailable, suggestCategoriesBatch, saveCorrections, loadCorrections, type CategoryInfo } from 'src/services/aiCategorization';
 import { formatCurrency } from 'src/utils/formatters';
 import type { TransactionFilters, TransactionType, TransactionStatus } from 'src/types';
-import { getSeasonOptions, UNCATEGORIZED_CATEGORY_ID } from 'src/types';
+import { getSeasonOptions } from 'src/types';
 
 const $q = useQuasar();
 const authStore = useAuthStore();
@@ -511,10 +511,9 @@ const filteredTransactions = computed(() => {
 
   // Client-side: Uncategorized filter (complex OR query not supported in Firestore)
   if (activeTab.value === 'uncategorized') {
+    const uncatIds = categoriesStore.uncategorizedIds;
     transactions = transactions.filter(t =>
-      !t.categoryId ||
-      t.categoryId === UNCATEGORIZED_CATEGORY_ID ||
-      t.categoryId === `${UNCATEGORIZED_CATEGORY_ID}_income`
+      !t.categoryId || uncatIds.has(t.categoryId)
     );
   }
 
@@ -527,10 +526,9 @@ const pendingCount = computed(() => {
 });
 
 const uncategorizedCount = computed(() => {
+  const uncatIds = categoriesStore.uncategorizedIds;
   return transactionsStore.transactions.filter(t =>
-    !t.categoryId ||
-    t.categoryId === UNCATEGORIZED_CATEGORY_ID ||
-    t.categoryId === `${UNCATEGORIZED_CATEGORY_ID}_income`
+    !t.categoryId || uncatIds.has(t.categoryId)
   ).length;
 });
 

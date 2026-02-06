@@ -378,8 +378,20 @@ export const useCategoriesStore = defineStore('categories', () => {
     return ids
   }
 
+  /** IDs of all categories that should be treated as "uncategorized" */
+  const uncategorizedIds = computed(() => {
+    const ids = new Set<string>([UNCATEGORIZED_EXPENSE.id, UNCATEGORIZED_INCOME.id])
+    // Also include any real Firestore category named "Sin categorizar"
+    for (const c of categories.value) {
+      if (c.name.toLowerCase().trim() === 'sin categorizar') {
+        ids.add(c.id)
+      }
+    }
+    return ids
+  })
+
   function isUncategorized(categoryId: string): boolean {
-    return categoryId === UNCATEGORIZED_EXPENSE.id || categoryId === UNCATEGORIZED_INCOME.id
+    return uncategorizedIds.value.has(categoryId)
   }
 
   function getUncategorizedId(type: 'income' | 'expense'): string {
@@ -422,6 +434,7 @@ export const useCategoriesStore = defineStore('categories', () => {
     getAllCategoryIds,
 
     // Uncategorized helpers
+    uncategorizedIds,
     isUncategorized,
     getUncategorizedId
   }
