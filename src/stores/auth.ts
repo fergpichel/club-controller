@@ -2,8 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import {
   signInWithEmailAndPassword,
-  signInWithRedirect,
-  getRedirectResult,
+  signInWithPopup,
   GoogleAuthProvider,
   createUserWithEmailAndPassword,
   signOut,
@@ -141,33 +140,20 @@ export const useAuthStore = defineStore('auth', () => {
 
     try {
       const provider = new GoogleAuthProvider()
-      // Use redirect instead of popup to avoid COOP issues on Netlify/modern hosts
-      await signInWithRedirect(auth, provider)
-      // Page will redirect to Google, then back. onAuthStateChanged handles the rest.
+      await signInWithPopup(auth, provider)
+      // onAuthStateChanged → setUser() handles the rest
       return true
     } catch (e: unknown) {
       const firebaseError = e as { code?: string }
+      if (firebaseError.code === 'auth/popup-closed-by-user') {
+        // User closed the popup — not an error
+        return false
+      }
       error.value = getAuthErrorMessage(firebaseError.code || '')
       return false
     } finally {
       loading.value = false
     }
-  }
-
-  /** Check for redirect result on page load (after Google SSO redirect back) */
-  async function handleRedirectResult() {
-    try {
-      const result = await getRedirectResult(auth)
-      if (result?.user) {
-        // onAuthStateChanged will handle setUser
-        return true
-      }
-    } catch (e: unknown) {
-      const firebaseError = e as { code?: string }
-      logger.error('Google redirect error:', firebaseError.code)
-      error.value = getAuthErrorMessage(firebaseError.code || '')
-    }
-    return false
   }
 
   /**
@@ -659,7 +645,6 @@ export const useAuthStore = defineStore('auth', () => {
     setUnsubscribe,
     login,
     loginWithGoogle,
-    handleRedirectResult,
     register,
     registerWithInvitation,
     completeSetup,

@@ -124,9 +124,12 @@ async function handleLogin() {
   }
 }
 
-function handleGoogleLogin() {
-  // Redirects to Google — page will reload and auth boot handles the rest
-  authStore.loginWithGoogle()
+async function handleGoogleLogin() {
+  const success = await authStore.loginWithGoogle()
+  if (success) {
+    // Router guard will send to /setup if no club, or /dashboard if they have one
+    router.push({ name: 'dashboard' })
+  }
 }
 </script>
 

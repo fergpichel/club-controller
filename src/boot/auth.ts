@@ -6,9 +6,6 @@ import { onAuthStateChanged } from 'firebase/auth'
 export default boot(async () => {
   const authStore = useAuthStore()
 
-  // Check for Google SSO redirect result (must happen before onAuthStateChanged)
-  await authStore.handleRedirectResult()
-
   // Set up Firebase auth state listener
   return new Promise<void>((resolve) => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
