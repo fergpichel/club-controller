@@ -461,7 +461,8 @@ const catalogsStore = useCatalogsStore();
 
 // State
 const loading = ref(false);
-const transactionType = computed(() => props.type || route.params.type as string || 'expense');
+const _editingType = ref<string | null>(null);
+const transactionType = computed(() => _editingType.value || props.type || route.params.type as string || 'expense');
 const isEditing = computed(() => !!props.id || !!route.params.id);
 
 // Form fields
@@ -695,6 +696,10 @@ onMounted(async () => {
     const transaction = transactionsStore.getTransactionById(id);
 
     if (transaction) {
+      // Set the type from the existing transaction so the form
+      // shows the correct header / categories (income vs expense)
+      _editingType.value = transaction.type;
+
       amount.value = transaction.amount;
       description.value = transaction.description;
       
