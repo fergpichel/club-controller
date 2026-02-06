@@ -238,6 +238,26 @@ service cloud.firestore {
     }
 
     // ──────────────────────────────────────────────
+    // SUPPLIERS
+    // ──────────────────────────────────────────────
+    match /suppliers/{docId} {
+      allow read: if isAuth() && belongsToClub(resource.data.clubId);
+      allow create: if isAuth() && isAdminOrManager(request.resource.data.clubId);
+      allow update: if isAuth() && isAdminOrManager(resource.data.clubId);
+      allow delete: if isAuth() && isAdminOrManager(resource.data.clubId);
+    }
+
+    // ──────────────────────────────────────────────
+    // SPONSORS
+    // ──────────────────────────────────────────────
+    match /sponsors/{docId} {
+      allow read: if isAuth() && belongsToClub(resource.data.clubId);
+      allow create: if isAuth() && isAdminOrManager(request.resource.data.clubId);
+      allow update: if isAuth() && isAdminOrManager(resource.data.clubId);
+      allow delete: if isAuth() && isAdminOrManager(resource.data.clubId);
+    }
+
+    // ──────────────────────────────────────────────
     // NOTIFICATIONS
     // ──────────────────────────────────────────────
     match /notifications/{notifId} {
