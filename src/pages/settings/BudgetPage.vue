@@ -207,6 +207,18 @@
         <div class="section-card">
           <div class="section-body actions-body">
             <q-btn
+              v-if="aiAvailable"
+              unelevated
+              color="deep-purple"
+              icon="auto_awesome"
+              label="Sugerir con IA"
+              :loading="aiSuggesting"
+              no-caps
+              @click="aiSuggestBudget"
+            >
+              <q-tooltip>Propone importes basándose en la temporada anterior</q-tooltip>
+            </q-btn>
+            <q-btn
               unelevated
               color="primary"
               icon="save"
@@ -236,6 +248,163 @@
           </div>
         </div>
       </div>
+
+      <!-- AI Suggestions Review Dialog -->
+      <q-dialog v-model="showAISuggestions" maximized transition-show="slide-up" transition-hide="slide-down">
+        <q-card class="ai-budget-card">
+          <q-card-section class="ai-budget-header">
+            <div class="row items-center">
+              <q-icon name="auto_awesome" color="deep-purple" size="28px" class="q-mr-sm" />
+              <div>
+                <div class="text-h6">Presupuesto sugerido por IA</div>
+                <div class="text-caption text-grey">Basado en datos reales de {{ previousSeasonLabel }}</div>
+              </div>
+              <q-space />
+              <q-btn flat round icon="close" @click="showAISuggestions = false" />
+            </div>
+          </q-card-section>
+
+          <q-separator />
+
+          <!-- General Notes -->
+          <q-card-section v-if="aiResult?.generalNotes" class="ai-general-notes">
+            <q-icon name="lightbulb" color="amber" size="20px" class="q-mr-sm" />
+            <span>{{ aiResult.generalNotes }}</span>
+          </q-card-section>
+
+          <q-separator v-if="aiResult?.generalNotes" />
+
+          <q-card-section class="ai-budget-body">
+            <q-scroll-area style="height: calc(100vh - 260px)">
+              <!-- Income suggestions -->
+              <div v-if="aiIncomeSuggestions.length > 0" class="suggestion-group">
+                <div class="suggestion-group-title income-title">
+                  <q-icon name="trending_up" class="q-mr-xs" /> Ingresos
+                  <span class="suggestion-group-total">{{ formatCurrency(aiIncomeTotal) }}</span>
+                </div>
+                <div
+                  v-for="s in aiIncomeSuggestions"
+                  :key="s.categoryId"
+                  class="ai-budget-row"
+                >
+                  <div class="ai-budget-info">
+                    <div class="ai-budget-cat">
+                      <div class="category-dot" :style="{ backgroundColor: getCategoryColor(s.categoryId) }" />
+                      <span>{{ s.categoryName }}</span>
+                    </div>
+                    <div class="ai-budget-reasoning">{{ s.reasoning }}</div>
+                  </div>
+                  <div class="ai-budget-amounts">
+                    <div class="ai-budget-previous">
+                      <span class="amount-label">Anterior</span>
+                      <span class="amount-value">{{ formatCurrency(s.previousAmount) }}</span>
+                    </div>
+                    <q-icon name="arrow_forward" size="14px" color="grey" />
+                    <div class="ai-budget-suggested">
+                      <span class="amount-label">Sugerido</span>
+                      <q-input
+                        v-model.number="s.suggestedAmount"
+                        type="number"
+                        dense
+                        outlined
+                        prefix="€"
+                        class="suggestion-input"
+                      />
+                    </div>
+                    <q-badge
+                      :color="s.changePercent > 0 ? 'positive' : s.changePercent < 0 ? 'negative' : 'grey'"
+                      :label="(s.changePercent > 0 ? '+' : '') + s.changePercent.toFixed(0) + '%'"
+                      class="change-badge"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <!-- Expense suggestions -->
+              <div v-if="aiExpenseSuggestions.length > 0" class="suggestion-group q-mt-lg">
+                <div class="suggestion-group-title expense-title">
+                  <q-icon name="trending_down" class="q-mr-xs" /> Gastos
+                  <span class="suggestion-group-total">{{ formatCurrency(aiExpenseTotal) }}</span>
+                </div>
+                <div
+                  v-for="s in aiExpenseSuggestions"
+                  :key="s.categoryId"
+                  class="ai-budget-row"
+                >
+                  <div class="ai-budget-info">
+                    <div class="ai-budget-cat">
+                      <div class="category-dot" :style="{ backgroundColor: getCategoryColor(s.categoryId) }" />
+                      <span>{{ s.categoryName }}</span>
+                    </div>
+                    <div class="ai-budget-reasoning">{{ s.reasoning }}</div>
+                  </div>
+                  <div class="ai-budget-amounts">
+                    <div class="ai-budget-previous">
+                      <span class="amount-label">Anterior</span>
+                      <span class="amount-value">{{ formatCurrency(s.previousAmount) }}</span>
+                    </div>
+                    <q-icon name="arrow_forward" size="14px" color="grey" />
+                    <div class="ai-budget-suggested">
+                      <span class="amount-label">Sugerido</span>
+                      <q-input
+                        v-model.number="s.suggestedAmount"
+                        type="number"
+                        dense
+                        outlined
+                        prefix="€"
+                        class="suggestion-input"
+                      />
+                    </div>
+                    <q-badge
+                      :color="s.changePercent > 0 ? 'positive' : s.changePercent < 0 ? 'negative' : 'grey'"
+                      :label="(s.changePercent > 0 ? '+' : '') + s.changePercent.toFixed(0) + '%'"
+                      class="change-badge"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <!-- Target surplus -->
+              <div v-if="aiResult" class="suggestion-group q-mt-lg">
+                <div class="suggestion-group-title">
+                  <q-icon name="flag" class="q-mr-xs" /> Superávit objetivo
+                </div>
+                <div class="ai-surplus-row">
+                  <span>La IA sugiere un superávit de</span>
+                  <q-input
+                    v-model.number="aiResult.targetSurplus"
+                    type="number"
+                    dense
+                    outlined
+                    prefix="€"
+                    class="surplus-input"
+                  />
+                </div>
+                <div class="ai-balance-preview">
+                  Balance proyectado: <strong :class="aiBalance >= 0 ? 'text-positive' : 'text-negative'">
+                    {{ aiBalance >= 0 ? '+' : '' }}{{ formatCurrency(aiBalance) }}
+                  </strong>
+                </div>
+              </div>
+            </q-scroll-area>
+          </q-card-section>
+
+          <q-separator />
+
+          <q-card-actions class="ai-budget-footer">
+            <q-btn flat label="Cancelar" @click="showAISuggestions = false" />
+            <q-space />
+            <q-btn
+              unelevated
+              color="deep-purple"
+              icon="check"
+              label="Aplicar al presupuesto"
+              no-caps
+              @click="applyAISuggestions"
+            />
+          </q-card-actions>
+        </q-card>
+      </q-dialog>
     </div>
   </q-page>
 </template>
@@ -243,13 +412,28 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from 'vue'
 import { useQuasar } from 'quasar'
+import {
+  collection,
+  query,
+  where,
+  getDocs,
+  Timestamp
+} from 'firebase/firestore'
+import { db } from 'src/boot/firebase'
 import { useBudgetStore } from 'src/stores/budget'
 import { useCategoriesStore } from 'src/stores/categories'
 import { useAuthStore } from 'src/stores/auth'
 import type { BudgetAllocation, Season } from 'src/types'
-import { computeSeason } from 'src/types'
+import { computeSeason, getSeasonDates } from 'src/types'
 import { formatCurrency } from 'src/utils/formatters'
 import { useSelectFilter } from 'src/composables/useSelectFilter'
+import {
+  isAIAvailable,
+  suggestBudgetAllocations,
+  type CategoryInfo,
+  type HistoricalCategorySpend,
+  type BudgetSuggestionResult
+} from 'src/services/aiCategorization'
 import { logger } from 'src/utils/logger'
 
 const $q = useQuasar()
@@ -447,6 +631,179 @@ function handleDelete() {
     await budgetStore.deleteBudget(existingBudget.value!.id)
     loadFormFromBudget()
     $q.notify({ type: 'positive', message: 'Presupuesto eliminado' })
+  })
+}
+
+// === AI Budget Suggestion ===
+const aiAvailable = isAIAvailable()
+const aiSuggesting = ref(false)
+const showAISuggestions = ref(false)
+const aiResult = ref<BudgetSuggestionResult | null>(null)
+const aiIncomeSuggestions = computed(() =>
+  aiResult.value?.suggestions.filter(s => s.type === 'income') || []
+)
+const aiExpenseSuggestions = computed(() =>
+  aiResult.value?.suggestions.filter(s => s.type === 'expense') || []
+)
+const aiIncomeTotal = computed(() =>
+  aiIncomeSuggestions.value.reduce((sum, s) => sum + (s.suggestedAmount || 0), 0)
+)
+const aiExpenseTotal = computed(() =>
+  aiExpenseSuggestions.value.reduce((sum, s) => sum + (s.suggestedAmount || 0), 0)
+)
+const aiBalance = computed(() => aiIncomeTotal.value - aiExpenseTotal.value)
+
+// Previous season label for display
+const previousSeasonLabel = computed(() => {
+  const startYear = parseInt(selectedSeason.value.split('/')[0]) - 1
+  const shortNext = String(startYear + 1).slice(2)
+  return `${startYear}/${shortNext}`
+})
+
+/**
+ * Fetch all transactions from a given season and aggregate by parent category
+ */
+async function fetchSeasonAggregates(season: string): Promise<HistoricalCategorySpend[]> {
+  const authStore = useAuthStore()
+  if (!authStore.clubId) return []
+
+  // Determine the season date range
+  const seasonDates = getSeasonDates(season as Season)
+
+  const q = query(
+    collection(db, 'transactions'),
+    where('clubId', '==', authStore.clubId),
+    where('date', '>=', Timestamp.fromDate(seasonDates.start)),
+    where('date', '<=', Timestamp.fromDate(seasonDates.end)),
+    where('status', 'in', ['approved', 'pending', 'paid'])
+  )
+
+  const snapshot = await getDocs(q)
+
+  // Aggregate by parent category
+  const aggregates = new Map<string, HistoricalCategorySpend>()
+
+  for (const docSnap of snapshot.docs) {
+    const data = docSnap.data()
+    const categoryId = data.categoryId as string
+    if (!categoryId) continue
+
+    // Resolve to parent category for budget-level aggregation
+    const cat = categoriesStore.getCategoryById(categoryId)
+    if (!cat) continue
+
+    const parentId = cat.parentId || cat.id
+    const parent = cat.parentId ? categoriesStore.getCategoryById(cat.parentId) : cat
+    if (!parent) continue
+
+    const key = parentId
+    const existing = aggregates.get(key)
+    const amount = data.amount as number || 0
+
+    if (existing) {
+      existing.totalAmount += amount
+      existing.transactionCount++
+    } else {
+      aggregates.set(key, {
+        categoryId: parentId,
+        categoryName: parent.name,
+        type: parent.type,
+        totalAmount: amount,
+        transactionCount: 1
+      })
+    }
+  }
+
+  return Array.from(aggregates.values())
+}
+
+async function aiSuggestBudget() {
+  aiSuggesting.value = true
+
+  try {
+    // 1. Fetch historical data from previous season
+    const historicalData = await fetchSeasonAggregates(previousSeasonLabel.value)
+
+    if (historicalData.length === 0) {
+      $q.notify({
+        type: 'warning',
+        icon: 'info',
+        message: `No se encontraron transacciones en la temporada ${previousSeasonLabel.value} para basar la sugerencia.`
+      })
+      return
+    }
+
+    // 2. Build category info
+    const categories: CategoryInfo[] = categoriesStore.allActiveCategories.map(c => {
+      const parent = c.parentId ? categoriesStore.getCategoryById(c.parentId) : null
+      return { id: c.id, name: c.name, type: c.type, parentName: parent?.name }
+    })
+
+    // 3. Get previous budget if exists
+    const prevBudget = budgetStore.getBudgetForSeason(previousSeasonLabel.value as Season)
+    const prevAllocations = prevBudget
+      ? [
+          ...prevBudget.incomeAllocations.map(a => ({ ...a, type: 'income' as const })),
+          ...prevBudget.expenseAllocations.map(a => ({ ...a, type: 'expense' as const }))
+        ]
+      : undefined
+
+    // 4. Call Gemini
+    const result = await suggestBudgetAllocations(
+      historicalData,
+      categories,
+      previousSeasonLabel.value,
+      selectedSeason.value,
+      prevAllocations
+    )
+
+    // 5. Validate category IDs exist — filter out any hallucinated ones
+    result.suggestions = result.suggestions.filter(s => {
+      const cat = categoriesStore.getCategoryById(s.categoryId)
+      return cat && !cat.parentId // Only parent categories
+    })
+
+    aiResult.value = result
+    showAISuggestions.value = true
+  } catch (e) {
+    logger.error('[AI] Budget suggestion error:', e)
+    $q.notify({
+      type: 'negative',
+      message: 'Error al generar sugerencias. Verifica la API key de Gemini.'
+    })
+  } finally {
+    aiSuggesting.value = false
+  }
+}
+
+function applyAISuggestions() {
+  if (!aiResult.value) return
+
+  // Apply income allocations
+  form.value.incomeAllocations = aiIncomeSuggestions.value
+    .filter(s => s.suggestedAmount > 0)
+    .map(s => ({
+      categoryId: s.categoryId,
+      amount: Math.round(s.suggestedAmount)
+    }))
+
+  // Apply expense allocations
+  form.value.expenseAllocations = aiExpenseSuggestions.value
+    .filter(s => s.suggestedAmount > 0)
+    .map(s => ({
+      categoryId: s.categoryId,
+      amount: Math.round(s.suggestedAmount)
+    }))
+
+  // Apply target surplus
+  form.value.targetSurplus = Math.round(aiResult.value.targetSurplus || 0)
+
+  showAISuggestions.value = false
+
+  $q.notify({
+    type: 'positive',
+    icon: 'auto_awesome',
+    message: 'Sugerencias aplicadas. Revisa y ajusta antes de guardar.'
   })
 }
 
@@ -661,5 +1018,154 @@ onMounted(async () => {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-3);
+}
+
+// === AI Budget Suggestions Dialog ===
+.ai-budget-card {
+  .ai-budget-header {
+    background: var(--color-bg-elevated);
+  }
+
+  .ai-general-notes {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    font-size: 0.8125rem;
+    color: var(--color-text-secondary);
+    background: rgba(255, 193, 7, 0.06);
+    line-height: 1.5;
+  }
+
+  .ai-budget-body {
+    padding: 0;
+  }
+
+  .suggestion-group {
+    padding: 0 16px 16px;
+
+    .suggestion-group-title {
+      display: flex;
+      align-items: center;
+      padding: 12px 0;
+      font-size: 0.9375rem;
+      font-weight: 700;
+      color: var(--color-text-primary);
+      border-bottom: 1px solid var(--color-border-light);
+      margin-bottom: 8px;
+
+      &.income-title { color: #10B981; }
+      &.expense-title { color: #EF4444; }
+
+      .suggestion-group-total {
+        margin-left: auto;
+        font-family: 'DM Sans', sans-serif;
+        font-size: 1rem;
+      }
+    }
+  }
+
+  .ai-budget-row {
+    padding: 12px 0;
+    border-bottom: 1px solid var(--color-border-light);
+
+    &:last-child { border-bottom: none; }
+  }
+
+  .ai-budget-info {
+    margin-bottom: 8px;
+
+    .ai-budget-cat {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-weight: 600;
+      font-size: 0.875rem;
+      color: var(--color-text-primary);
+    }
+
+    .ai-budget-reasoning {
+      margin-top: 4px;
+      font-size: 0.75rem;
+      color: var(--color-text-tertiary);
+      line-height: 1.4;
+      padding-left: 18px;
+    }
+  }
+
+  .ai-budget-amounts {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding-left: 18px;
+
+    .ai-budget-previous,
+    .ai-budget-suggested {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+
+      .amount-label {
+        font-size: 0.625rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: var(--color-text-muted);
+        font-weight: 600;
+      }
+
+      .amount-value {
+        font-family: 'DM Sans', sans-serif;
+        font-size: 0.875rem;
+        color: var(--color-text-secondary);
+      }
+    }
+
+    .suggestion-input {
+      width: 130px;
+
+      :deep(.q-field__control) {
+        height: 32px;
+        min-height: 32px;
+      }
+
+      :deep(.q-field__native) {
+        font-family: 'DM Sans', sans-serif;
+        font-weight: 600;
+      }
+    }
+
+    .change-badge {
+      font-size: 0.6875rem;
+      padding: 2px 8px;
+      border-radius: 10px;
+    }
+  }
+
+  .ai-surplus-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 0;
+    font-size: 0.875rem;
+    color: var(--color-text-secondary);
+
+    .surplus-input {
+      width: 140px;
+
+      :deep(.q-field__control) {
+        height: 32px;
+        min-height: 32px;
+      }
+    }
+  }
+
+  .ai-balance-preview {
+    font-size: 0.8125rem;
+    color: var(--color-text-tertiary);
+    padding: 8px 0;
+  }
+
+  .ai-budget-footer {
+    padding: 12px 16px;
+  }
 }
 </style>
