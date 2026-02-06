@@ -515,22 +515,134 @@
       <!-- Create Category Dialog -->
       <q-dialog v-model="showCreateCategory">
         <q-card class="create-category-dialog">
-          <q-card-section>
-            <h3>Nueva categoría</h3>
-            <p class="text-caption text-grey">Para: "{{ newCategoryForConcepto }}"</p>
-          </q-card-section>
-          <q-card-section>
-            <q-input v-model="newCategoryName" label="Nombre" outlined dense class="q-mb-md" />
-            <div class="type-toggle q-mb-md">
-              <button :class="['type-btn income', { active: newCategoryType === 'income' }]" @click="newCategoryType = 'income'">Ingreso</button>
-              <button :class="['type-btn expense', { active: newCategoryType === 'expense' }]" @click="newCategoryType = 'expense'">Gasto</button>
+          <!-- Header with preview -->
+          <q-card-section class="dialog-header">
+            <div class="dialog-header-row">
+              <div class="dialog-icon-preview" :style="{ backgroundColor: newCategoryColor + '20', color: newCategoryColor }">
+                <q-icon :name="newCategoryIcon || 'category'" size="24px" />
+              </div>
+              <div class="dialog-header-text">
+                <h3>{{ newCategoryParentId ? 'Nueva subcategoría' : 'Nueva categoría' }}</h3>
+                <p>Para: "{{ newCategoryForConcepto }}"</p>
+              </div>
+              <q-btn v-close-popup flat round dense icon="close" size="sm" />
             </div>
-            <q-input v-model="newCategoryIcon" label="Icono (Material)" outlined dense class="q-mb-md" hint="Ej: sports_soccer, receipt_long" />
-            <q-input v-model="newCategoryColor" label="Color" outlined dense type="color" />
           </q-card-section>
-          <q-card-actions align="right">
-            <q-btn v-close-popup flat label="Cancelar" />
-            <q-btn label="Crear" color="primary" :disable="!newCategoryName" :loading="creatingCategory" @click="createNewCategory" />
+
+          <q-separator />
+
+          <q-card-section class="dialog-body">
+            <!-- Category mode selector -->
+            <div class="creation-mode">
+              <button
+                :class="['mode-btn', { active: !newCategoryParentId }]"
+                type="button"
+                @click="newCategoryParentId = null"
+              >
+                <q-icon name="create_new_folder" size="18px" />
+                <span>Categoría nueva</span>
+              </button>
+              <button
+                :class="['mode-btn', { active: !!newCategoryParentId }]"
+                type="button"
+                @click="autoSelectParent"
+              >
+                <q-icon name="subdirectory_arrow_right" size="18px" />
+                <span>Subcategoría</span>
+              </button>
+            </div>
+
+            <!-- Parent selector (when subcategory mode) -->
+            <div v-if="newCategoryParentId !== null" class="field-group">
+              <label class="field-label">Categoría padre</label>
+              <q-select
+                v-model="newCategoryParentId"
+                :options="parentCategoryOptions"
+                emit-value
+                map-options
+                dense
+                outlined
+                class="parent-select"
+              >
+                <template #option="scope">
+                  <q-item v-bind="scope.itemProps">
+                    <q-item-section avatar>
+                      <div class="parent-opt-icon" :style="{ backgroundColor: scope.opt.color + '20', color: scope.opt.color }">
+                        <q-icon :name="scope.opt.icon || 'category'" size="18px" />
+                      </div>
+                    </q-item-section>
+                    <q-item-section>
+                      <q-item-label>{{ scope.opt.label }}</q-item-label>
+                    </q-item-section>
+                  </q-item>
+                </template>
+                <template #selected-item="scope">
+                  <div class="selected-parent">
+                    <div class="parent-opt-icon-sm" :style="{ backgroundColor: scope.opt.color + '20', color: scope.opt.color }">
+                      <q-icon :name="scope.opt.icon || 'category'" size="14px" />
+                    </div>
+                    <span>{{ scope.opt.label }}</span>
+                  </div>
+                </template>
+              </q-select>
+            </div>
+
+            <!-- Name -->
+            <div class="field-group">
+              <label class="field-label">Nombre</label>
+              <q-input v-model="newCategoryName" outlined dense placeholder="Nombre de la categoría" />
+            </div>
+
+            <!-- Type toggle (only for parent categories) -->
+            <div v-if="!newCategoryParentId" class="field-group">
+              <label class="field-label">Tipo</label>
+              <div class="type-toggle">
+                <button :class="['type-btn income', { active: newCategoryType === 'income' }]" type="button" @click="newCategoryType = 'income'">
+                  <q-icon name="arrow_upward" size="16px" />
+                  Ingreso
+                </button>
+                <button :class="['type-btn expense', { active: newCategoryType === 'expense' }]" type="button" @click="newCategoryType = 'expense'">
+                  <q-icon name="arrow_downward" size="16px" />
+                  Gasto
+                </button>
+              </div>
+            </div>
+
+            <!-- Icon picker + Color -->
+            <div class="icon-color-row">
+              <div class="field-group" style="flex: 1">
+                <label class="field-label">Icono</label>
+                <IconPicker v-model="newCategoryIcon" :color="newCategoryColor" />
+              </div>
+              <div class="field-group">
+                <label class="field-label">Color</label>
+                <div class="color-picker-wrap">
+                  <button
+                    type="button"
+                    class="color-swatch"
+                    :style="{ backgroundColor: newCategoryColor }"
+                  >
+                    <q-popup-proxy cover transition-show="scale" transition-hide="scale">
+                      <q-color v-model="newCategoryColor" />
+                    </q-popup-proxy>
+                  </button>
+                  <span class="color-hex">{{ newCategoryColor }}</span>
+                </div>
+              </div>
+            </div>
+          </q-card-section>
+
+          <q-card-actions class="dialog-actions">
+            <q-btn v-close-popup flat label="Cancelar" class="cancel-btn" />
+            <q-btn
+              :label="newCategoryParentId ? 'Crear subcategoría' : 'Crear categoría'"
+              color="primary"
+              unelevated
+              :disable="!newCategoryName"
+              :loading="creatingCategory"
+              icon="add"
+              @click="createNewCategory"
+            />
           </q-card-actions>
         </q-card>
       </q-dialog>
@@ -570,6 +682,7 @@ import { useTeamsStore } from 'src/stores/teams'
 import { useTransactionsStore } from 'src/stores/transactions'
 import { logger } from 'src/utils/logger'
 import { formatCurrency } from 'src/utils/formatters'
+import IconPicker from 'src/components/IconPicker.vue'
 
 const $q = useQuasar()
 const categoriesStore = useCategoriesStore()
@@ -677,7 +790,23 @@ const newCategoryName = ref('')
 const newCategoryType = ref<'income' | 'expense'>('expense')
 const newCategoryIcon = ref('receipt_long')
 const newCategoryColor = ref('#2196F3')
+const newCategoryParentId = ref<string | null>(null)
 const creatingCategory = ref(false)
+
+// Parent category options for the subcategory selector
+const parentCategoryOptions = computed(() => {
+  const type = newCategoryType.value
+  const parents = type === 'expense'
+    ? categoriesStore.expenseParentCategories
+    : categoriesStore.incomeParentCategories
+
+  return parents.map(p => ({
+    label: p.name,
+    value: p.id,
+    icon: p.icon,
+    color: p.color
+  }))
+})
 
 // === Computed ===
 const filteredGroups = computed(() => {
@@ -850,26 +979,47 @@ function openCreateCategory(group: ConceptoGroup) {
   newCategoryName.value = group.concepto
   newCategoryType.value = group.type
   newCategoryIcon.value = group.type === 'income' ? 'payments' : 'receipt_long'
-  newCategoryColor.value = group.type === 'income' ? '#4CAF50' : '#F44336'
+  newCategoryColor.value = group.type === 'income' ? '#00D4AA' : '#FF5470'
+  newCategoryParentId.value = null
   showCreateCategory.value = true
+}
+
+function autoSelectParent() {
+  // When switching to subcategory mode, auto-select the first available parent
+  if (parentCategoryOptions.value.length > 0) {
+    newCategoryParentId.value = parentCategoryOptions.value[0].value
+    // Inherit color and icon from parent
+    const parent = categoriesStore.getCategoryById(newCategoryParentId.value!)
+    if (parent) {
+      newCategoryColor.value = parent.color
+    }
+  } else {
+    newCategoryParentId.value = null
+  }
 }
 
 async function createNewCategory() {
   creatingCategory.value = true
   try {
-    const newCat = await categoriesStore.createCategory({
+    const data: Record<string, unknown> = {
       name: newCategoryName.value,
       type: newCategoryType.value,
       icon: newCategoryIcon.value,
       color: newCategoryColor.value,
       isActive: true
-    })
+    }
+    if (newCategoryParentId.value) {
+      data.parentId = newCategoryParentId.value
+    }
+
+    const newCat = await categoriesStore.createCategory(data as Parameters<typeof categoriesStore.createCategory>[0])
     if (newCat) {
       const idx = newCategoryForGroupIdx.value
       conceptoGroups.value[idx].categoryId = newCat.id
       importer.setConceptoGroup(idx, { categoryId: newCat.id })
       showCreateCategory.value = false
-      $q.notify({ type: 'positive', message: `Categoría "${newCat.name}" creada` })
+      const label = newCategoryParentId.value ? 'Subcategoría' : 'Categoría'
+      $q.notify({ type: 'positive', message: `${label} "${newCat.name}" creada` })
     }
   } catch (e) {
     $q.notify({ type: 'negative', message: 'Error al crear categoría' })
@@ -1471,9 +1621,183 @@ function reset() {
   }
 }
 
+// === CREATE CATEGORY DIALOG (Improved) ===
 .create-category-dialog {
-  min-width: 400px;
-  h3 { margin: 0; font-size: 1.125rem; }
+  min-width: 460px;
+  max-width: 520px;
+  border-radius: var(--radius-xl) !important;
+
+  @media (max-width: 500px) {
+    min-width: 95vw;
+  }
+
+  .dialog-header {
+    padding: 16px 20px;
+
+    .dialog-header-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .dialog-icon-preview {
+      width: 44px;
+      height: 44px;
+      border-radius: var(--radius-md);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      transition: all 0.3s;
+    }
+
+    .dialog-header-text {
+      flex: 1;
+
+      h3 {
+        margin: 0;
+        font-size: 1.0625rem;
+        font-weight: 700;
+        color: var(--color-text-primary);
+      }
+
+      p {
+        margin: 2px 0 0;
+        font-size: 0.75rem;
+        color: var(--color-text-tertiary);
+      }
+    }
+  }
+
+  .dialog-body {
+    padding: 16px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .creation-mode {
+    display: flex;
+    gap: 8px;
+
+    .mode-btn {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 10px 16px;
+      border-radius: var(--radius-md);
+      border: 1px solid var(--color-border);
+      background: transparent;
+      color: var(--color-text-tertiary);
+      font-size: 0.8125rem;
+      font-weight: 500;
+      font-family: inherit;
+      cursor: pointer;
+      transition: all 0.2s;
+
+      &:hover:not(.active) {
+        background: var(--color-bg-tertiary);
+        color: var(--color-text-secondary);
+      }
+
+      &.active {
+        background: rgba(99, 91, 255, 0.1);
+        border-color: var(--color-accent);
+        color: var(--color-accent);
+        font-weight: 600;
+      }
+    }
+  }
+
+  .field-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .field-label {
+    font-size: 0.6875rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--color-text-muted);
+  }
+
+  .parent-select {
+    :deep(.q-field__control) {
+      min-height: 42px;
+    }
+  }
+
+  .parent-opt-icon {
+    width: 30px;
+    height: 30px;
+    border-radius: var(--radius-sm);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .parent-opt-icon-sm {
+    width: 22px;
+    height: 22px;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .selected-parent {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.875rem;
+  }
+
+  .icon-color-row {
+    display: flex;
+    gap: 16px;
+    align-items: flex-start;
+  }
+
+  .color-picker-wrap {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+
+    .color-swatch {
+      width: 42px;
+      height: 42px;
+      border-radius: var(--radius-md);
+      border: 2px solid var(--color-border);
+      cursor: pointer;
+      transition: all 0.2s;
+
+      &:hover {
+        border-color: var(--color-text-muted);
+        transform: scale(1.05);
+      }
+    }
+
+    .color-hex {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.75rem;
+      color: var(--color-text-muted);
+    }
+  }
+
+  .dialog-actions {
+    padding: 12px 20px 16px;
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+
+    .cancel-btn {
+      color: var(--color-text-tertiary);
+    }
+  }
 }
 
 .success-dialog {

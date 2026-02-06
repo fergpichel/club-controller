@@ -221,21 +221,10 @@
               </template>
             </q-select>
 
-            <q-input
-              v-model="categoryForm.icon"
-              label="Icono (Material Icons)"
-              outlined
-              hint="Ej: sports_soccer, receipt, restaurant"
-            >
-              <template #prepend>
-                <q-icon :name="categoryForm.icon || 'category'" />
-              </template>
-              <template #append>
-                <q-btn flat dense round icon="help_outline" size="sm" @click="openIconHelper">
-                  <q-tooltip>Ver iconos disponibles</q-tooltip>
-                </q-btn>
-              </template>
-            </q-input>
+            <div>
+              <label class="field-label-text">Icono</label>
+              <IconPicker v-model="categoryForm.icon" :color="categoryForm.color" />
+            </div>
 
             <div class="row items-center q-gutter-md">
               <span>Color:</span>
@@ -305,6 +294,7 @@ import { useAuthStore } from 'src/stores/auth'
 import type { Category, CategoryType } from 'src/types'
 import { getDefaultCategoryCount } from 'src/config/defaultCategories'
 import { logger } from 'src/utils/logger'
+import IconPicker from 'src/components/IconPicker.vue'
 
 const $q = useQuasar()
 const categoriesStore = useCategoriesStore()
@@ -474,10 +464,6 @@ function deleteCategory(cat: Category) {
     await categoriesStore.deleteCategory(cat.id)
     $q.notify({ type: 'positive', message: 'Categoría eliminada' })
   })
-}
-
-function openIconHelper() {
-  window.open('https://fonts.google.com/icons?icon.set=Material+Icons', '_blank')
 }
 
 // === Load default template ===
@@ -653,6 +639,16 @@ onMounted(() => {
   .category-row:hover & {
     opacity: 1;
   }
+}
+
+.field-label-text {
+  display: block;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--color-text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 6px;
 }
 
 // Dialog
