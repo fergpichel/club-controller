@@ -101,25 +101,31 @@
           <div v-show="showFilters" class="filters-row q-mb-md">
             <q-select
               v-model="filterCategory"
-              :options="categoryOptions"
+              :options="categoryFilter.options.value"
               label="Categoría"
               outlined
               dense
               emit-value
               map-options
               clearable
+              use-input
+              input-debounce="0"
               class="filter-select"
+              @filter="categoryFilter.filter"
             />
             <q-select
               v-model="filterTeam"
-              :options="teamOptions"
+              :options="teamFilter.options.value"
               label="Equipo"
               outlined
               dense
               emit-value
               map-options
               clearable
+              use-input
+              input-debounce="0"
               class="filter-select"
+              @filter="teamFilter.filter"
             />
           </div>
 
@@ -161,6 +167,7 @@ import { useTransactionsStore } from 'src/stores/transactions';
 import { useCategoriesStore } from 'src/stores/categories';
 import { useTeamsStore } from 'src/stores/teams';
 import TransactionItem from 'src/components/TransactionItem.vue';
+import { useSelectFilter } from 'src/composables/useSelectFilter';
 import { formatCurrency } from 'src/utils/formatters'
 
 const transactionsStore = useTransactionsStore();
@@ -249,6 +256,7 @@ const categoryOptions = computed(() => {
     value: c.id
   }));
 });
+const categoryFilter = useSelectFilter(categoryOptions);
 
 const teamOptions = computed(() => {
   return teamsStore.activeTeams.map(t => ({
@@ -256,6 +264,7 @@ const teamOptions = computed(() => {
     value: t.id
   }));
 });
+const teamFilter = useSelectFilter(teamOptions);
 
 // Methods
 

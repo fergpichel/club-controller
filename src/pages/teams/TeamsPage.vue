@@ -131,23 +131,29 @@
             <div class="row q-gutter-sm">
               <q-select
                 v-model="teamForm.ageCategoryId"
-                :options="ageCategoryOptions"
+                :options="ageCategoryFilter.options.value"
                 label="Categoría de edad"
                 outlined
                 emit-value
                 map-options
                 clearable
+                use-input
+                input-debounce="0"
                 class="col"
+                @filter="ageCategoryFilter.filter"
               />
               <q-select
                 v-model="teamForm.genderOptionId"
-                :options="genderOptionsList"
+                :options="genderFilter.options.value"
                 label="Género"
                 outlined
                 emit-value
                 map-options
                 clearable
+                use-input
+                input-debounce="0"
                 class="col"
+                @filter="genderFilter.filter"
               />
             </div>
             <q-input
@@ -185,6 +191,7 @@ import { useTransactionsStore } from 'src/stores/transactions'
 import { useCatalogsStore } from 'src/stores/catalogs'
 import { computeSeason, getSeasonOptions } from 'src/types'
 import type { Team, Season } from 'src/types'
+import { useSelectFilter } from 'src/composables/useSelectFilter'
 import { formatCurrency } from 'src/utils/formatters'
 
 const $q = useQuasar()
@@ -223,10 +230,12 @@ const seasonTeams = computed(() => teamsStore.getTeamsBySeason(selectedSeason.va
 const ageCategoryOptions = computed(() =>
   catalogsStore.activeAgeCategories.map(a => ({ label: a.name, value: a.id }))
 )
+const ageCategoryFilter = useSelectFilter(ageCategoryOptions)
 
 const genderOptionsList = computed(() =>
   catalogsStore.activeGenderOptions.map(g => ({ label: g.name, value: g.id }))
 )
+const genderFilter = useSelectFilter(genderOptionsList)
 
 // Helpers
 

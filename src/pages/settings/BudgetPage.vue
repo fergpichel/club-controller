@@ -110,14 +110,17 @@
             <div class="add-allocation">
               <q-select
                 v-model="newIncomeCategory"
-                :options="availableIncomeCategories"
+                :options="incomeCatFilter.options.value"
                 label="Añadir categoría de ingreso"
                 outlined
                 dense
                 emit-value
                 map-options
                 clearable
+                use-input
+                input-debounce="0"
                 class="add-select"
+                @filter="incomeCatFilter.filter"
               >
                 <template #prepend>
                   <q-icon name="add" />
@@ -171,14 +174,17 @@
             <div class="add-allocation">
               <q-select
                 v-model="newExpenseCategory"
-                :options="availableExpenseCategories"
+                :options="expenseCatFilter.options.value"
                 label="Añadir categoría de gasto"
                 outlined
                 dense
                 emit-value
                 map-options
                 clearable
+                use-input
+                input-debounce="0"
                 class="add-select"
+                @filter="expenseCatFilter.filter"
               >
                 <template #prepend>
                   <q-icon name="add" />
@@ -243,6 +249,7 @@ import { useAuthStore } from 'src/stores/auth'
 import type { BudgetAllocation, Season } from 'src/types'
 import { computeSeason } from 'src/types'
 import { formatCurrency } from 'src/utils/formatters'
+import { useSelectFilter } from 'src/composables/useSelectFilter'
 import { logger } from 'src/utils/logger'
 
 const $q = useQuasar()
@@ -300,6 +307,7 @@ const availableIncomeCategories = computed(() => {
     .filter(c => !usedIds.has(c.id))
     .map(c => ({ label: c.name, value: c.id }))
 })
+const incomeCatFilter = useSelectFilter(availableIncomeCategories)
 
 const availableExpenseCategories = computed(() => {
   const usedIds = new Set(form.value.expenseAllocations.map(a => a.categoryId))
@@ -307,6 +315,7 @@ const availableExpenseCategories = computed(() => {
     .filter(c => !usedIds.has(c.id))
     .map(c => ({ label: c.name, value: c.id }))
 })
+const expenseCatFilter = useSelectFilter(availableExpenseCategories)
 
 // Helpers
 function getCategoryName(id: string): string {

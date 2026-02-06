@@ -367,13 +367,16 @@
             <div class="concepto-mapping">
               <q-select
                 :model-value="group.categoryId"
-                :options="getCategoryOptions(group.type)"
+                :options="group.type === 'income' ? incomeCatFilter.options.value : expenseCatFilter.options.value"
                 label="Categoría"
                 emit-value
                 map-options
                 dense
                 outlined
+                use-input
+                input-debounce="0"
                 class="category-select"
+                @filter="group.type === 'income' ? incomeCatFilter.filter : expenseCatFilter.filter"
                 @update:model-value="(val: string | null) => setGroupCategory(idx, val)"
               >
                 <template #option="scope">
@@ -396,14 +399,17 @@
               <q-select
                 v-if="group.categoryId"
                 :model-value="group.teamId"
-                :options="[{ label: '— Sin equipo —', value: null }, ...teamOptions]"
+                :options="[{ label: '— Sin equipo —', value: null }, ...teamFilter.options.value]"
                 label="Equipo"
                 emit-value
                 map-options
                 dense
                 outlined
                 clearable
+                use-input
+                input-debounce="0"
                 class="team-select"
+                @filter="teamFilter.filter"
                 @update:model-value="(val: string | null) => setGroupTeam(idx, val)"
               />
             </div>
@@ -557,12 +563,15 @@
               <label class="field-label">Categoría padre</label>
               <q-select
                 v-model="newCategoryParentId"
-                :options="parentCategoryOptions"
+                :options="parentCatFilter.options.value"
                 emit-value
                 map-options
                 dense
                 outlined
+                use-input
+                input-debounce="0"
                 class="parent-select"
+                @filter="parentCatFilter.filter"
               >
                 <template #option="scope">
                   <q-item v-bind="scope.itemProps">
@@ -682,6 +691,7 @@ import { useTeamsStore } from 'src/stores/teams'
 import { useTransactionsStore } from 'src/stores/transactions'
 import { logger } from 'src/utils/logger'
 import { formatCurrency } from 'src/utils/formatters'
+import { useSelectFilter } from 'src/composables/useSelectFilter'
 import IconPicker from 'src/components/IconPicker.vue'
 
 const $q = useQuasar()
@@ -848,6 +858,14 @@ const incomeColumnOptions = computed(() => buildColumnOptions(incomeHeaders.valu
 const teamOptions = computed(() =>
   teamsStore.activeTeams.map(t => ({ label: t.name, value: t.id }))
 )
+const teamFilter = useSelectFilter(teamOptions)
+
+// Category filter options pre-computed by type
+const incomeCatOptions = computed(() => getCategoryOptions('income'))
+const expenseCatOptions = computed(() => getCategoryOptions('expense'))
+const incomeCatFilter = useSelectFilter(incomeCatOptions)
+const expenseCatFilter = useSelectFilter(expenseCatOptions)
+const parentCatFilter = useSelectFilter(parentCategoryOptions)
 
 // === Methods ===
 function triggerFileInput() { fileInput.value?.click() }

@@ -55,12 +55,15 @@
             v-model="filterCategory"
             dense
             outlined
-            :options="categoryOptions"
+            :options="categoryFilter.options.value"
             emit-value
             map-options
             clearable
+            use-input
+            input-debounce="0"
             label="Categoría"
             class="filter-select"
+            @filter="categoryFilter.filter"
           />
 
           <!-- Team filter -->
@@ -68,12 +71,15 @@
             v-model="filterTeam"
             dense
             outlined
-            :options="teamOptions"
+            :options="teamFilter.options.value"
             emit-value
             map-options
             clearable
+            use-input
+            input-debounce="0"
             label="Equipo"
             class="filter-select"
+            @filter="teamFilter.filter"
           />
 
           <!-- Season filter -->
@@ -221,6 +227,7 @@ import { useTransactionsStore } from 'src/stores/transactions';
 import { useCategoriesStore } from 'src/stores/categories';
 import { useTeamsStore } from 'src/stores/teams';
 import TransactionItem from 'src/components/TransactionItem.vue';
+import { useSelectFilter } from 'src/composables/useSelectFilter';
 import type { TransactionFilters, TransactionType, TransactionStatus } from 'src/types';
 import { getSeasonOptions, UNCATEGORIZED_CATEGORY_ID } from 'src/types';
 
@@ -253,6 +260,7 @@ const categoryOptions = computed(() => {
     value: c.id
   }));
 });
+const categoryFilter = useSelectFilter(categoryOptions);
 
 const teamOptions = computed(() => {
   return teamsStore.activeTeams.map(t => ({
@@ -260,6 +268,7 @@ const teamOptions = computed(() => {
     value: t.id
   }));
 });
+const teamFilter = useSelectFilter(teamOptions);
 
 // Computed
 const isLoading = computed(() => transactionsStore.loading);

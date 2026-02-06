@@ -208,13 +208,16 @@
             <q-select
               v-if="!editingCategory || !editingCategory.parentId"
               v-model="categoryForm.parentId"
-              :options="parentOptions"
+              :options="parentFilter.options.value"
               label="Categoría padre (opcional)"
               outlined
               emit-value
               map-options
               clearable
+              use-input
+              input-debounce="0"
               hint="Dejar vacío para crear una categoría principal"
+              @filter="parentFilter.filter"
             >
               <template #prepend>
                 <q-icon name="account_tree" />
@@ -294,6 +297,7 @@ import { useAuthStore } from 'src/stores/auth'
 import type { Category, CategoryType } from 'src/types'
 import { getDefaultCategoryCount } from 'src/config/defaultCategories'
 import { logger } from 'src/utils/logger'
+import { useSelectFilter } from 'src/composables/useSelectFilter'
 import IconPicker from 'src/components/IconPicker.vue'
 
 const $q = useQuasar()
@@ -324,7 +328,7 @@ const expenseTree = computed(() => categoriesStore.getCategoriesTree('expense'))
 const incomeTree = computed(() => categoriesStore.getCategoriesTree('income'))
 
 // === Parent options for the form ===
-const parentOptions = computed(() => {
+const parentOptionsAll = computed(() => {
   const type = categoryForm.value.type
   const parents = type === 'expense'
     ? categoriesStore.expenseParentCategories
@@ -337,6 +341,7 @@ const parentOptions = computed(() => {
       value: p.id
     }))
 })
+const parentFilter = useSelectFilter(parentOptionsAll)
 
 // Check if the parent category is sensitive (for inherited badge)
 const isParentSensitive = computed(() => {

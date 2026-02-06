@@ -55,14 +55,17 @@
 
             <q-select
               v-model="parentCategoryId"
-              :options="parentCategoryOptions"
+              :options="parentCategoryFilter.options.value"
               label="Categoría"
               outlined
               emit-value
               map-options
               clearable
+              use-input
+              input-debounce="0"
               hint="Dejar vacío para 'Sin categorizar'"
               class="q-mb-md"
+              @filter="parentCategoryFilter.filter"
               @update:model-value="onParentCategoryChange"
             >
               <template #prepend>
@@ -83,14 +86,17 @@
             <q-select
               v-if="subcategoryOptions.length > 0"
               v-model="subcategoryId"
-              :options="subcategoryOptions"
+              :options="subcategoryFilter.options.value"
               label="Subcategoría (opcional)"
               outlined
               emit-value
               map-options
               clearable
+              use-input
+              input-debounce="0"
               class="q-mb-md"
               hint="Especifica el tipo exacto de gasto/ingreso"
+              @filter="subcategoryFilter.filter"
             >
               <template #prepend>
                 <q-icon name="subdirectory_arrow_right" />
@@ -239,13 +245,16 @@
 
             <q-select
               v-model="teamId"
-              :options="teamOptions"
+              :options="teamFilter.options.value"
               label="Equipo"
               outlined
               emit-value
               map-options
               clearable
+              use-input
+              input-debounce="0"
               class="q-mb-md"
+              @filter="teamFilter.filter"
             >
               <template #prepend>
                 <q-icon name="groups" />
@@ -254,13 +263,16 @@
 
             <q-select
               v-model="projectId"
-              :options="projectOptions"
+              :options="projectFilter.options.value"
               label="Proyecto"
               outlined
               emit-value
               map-options
               clearable
+              use-input
+              input-debounce="0"
               class="q-mb-md"
+              @filter="projectFilter.filter"
             >
               <template #prepend>
                 <q-icon name="folder" />
@@ -269,13 +281,16 @@
 
             <q-select
               v-model="eventId"
-              :options="eventOptions"
+              :options="eventFilter.options.value"
               label="Evento"
               outlined
               emit-value
               map-options
               clearable
+              use-input
+              input-debounce="0"
               class="q-mb-md"
+              @filter="eventFilter.filter"
             >
               <template #prepend>
                 <q-icon name="event" />
@@ -285,13 +300,16 @@
             <q-select
               v-if="transactionType === 'income'"
               v-model="sponsorId"
-              :options="sponsorOptions"
+              :options="sponsorFilter.options.value"
               label="Patrocinador"
               outlined
               emit-value
               map-options
               clearable
+              use-input
+              input-debounce="0"
               class="q-mb-md"
+              @filter="sponsorFilter.filter"
             >
               <template #prepend>
                 <q-icon name="handshake" />
@@ -301,12 +319,15 @@
             <q-select
               v-if="transactionType === 'expense'"
               v-model="supplierId"
-              :options="supplierOptions"
+              :options="supplierFilter.options.value"
               label="Proveedor"
               outlined
               emit-value
               map-options
               clearable
+              use-input
+              input-debounce="0"
+              @filter="supplierFilter.filter"
             >
               <template #prepend>
                 <q-icon name="local_shipping" />
@@ -422,6 +443,7 @@ import { useCatalogsStore } from 'src/stores/catalogs';
 import type { PaymentMethod, Attachment, Season } from 'src/types';
 import { getSeasonOptions } from 'src/types';
 import { formatCurrency } from 'src/utils/formatters'
+import { useSelectFilter } from 'src/composables/useSelectFilter'
 import { logger } from 'src/utils/logger'
 
 const props = defineProps<{
@@ -486,7 +508,7 @@ function calculateFromBase() {
 }
 
 // Options - Categories with hierarchy
-const parentCategoryOptions = computed(() => {
+const parentCategoryOptionsAll = computed(() => {
   const categories = transactionType.value === 'income'
     ? categoriesStore.incomeParentCategories
     : categoriesStore.expenseParentCategories;
@@ -559,6 +581,15 @@ const paymentMethodOptions = [
   { label: 'Cheque', value: 'check' },
   { label: 'Otro', value: 'other' }
 ];
+
+// Searchable filter wrappers
+const parentCategoryFilter = useSelectFilter(parentCategoryOptionsAll)
+const subcategoryFilter = useSelectFilter(subcategoryOptions)
+const teamFilter = useSelectFilter(teamOptions)
+const projectFilter = useSelectFilter(projectOptions)
+const eventFilter = useSelectFilter(eventOptions)
+const sponsorFilter = useSelectFilter(sponsorOptions)
+const supplierFilter = useSelectFilter(supplierOptions)
 
 // Methods
 function removeExistingAttachment(attachmentId: string) {

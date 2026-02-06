@@ -8,15 +8,18 @@
       <div class="header-right">
         <q-select
           v-model="selectedTeams"
-          :options="teamOptions"
+          :options="teamFilter.options.value"
           multiple
           dense
           outlined
           label="Equipos a comparar"
           emit-value
           map-options
+          use-input
+          input-debounce="0"
           style="min-width: 250px"
           :max-values="4"
+          @filter="teamFilter.filter"
         >
           <template #option="{ itemProps, opt, selected, toggleOption }">
             <q-item v-bind="itemProps">
@@ -122,6 +125,7 @@ import {
 } from 'chart.js'
 import { useTransactionsStore } from 'src/stores/transactions'
 import { useTeamsStore } from 'src/stores/teams'
+import { useSelectFilter } from 'src/composables/useSelectFilter'
 import { formatCurrency } from 'src/utils/formatters'
 
 ChartJS.register(RadialLinearScale, PointElement, LineElement, Filler, Tooltip, Legend)
@@ -207,7 +211,7 @@ const teamStats = computed(() => {
 })
 
 // Team options for selector
-const teamOptions = computed(() => {
+const teamOptionsAll = computed(() => {
   return Object.values(teamStats.value)
     .filter(t => t.transactions > 0)
     .sort((a, b) => b.income - a.income)
@@ -217,6 +221,7 @@ const teamOptions = computed(() => {
       color: team.color
     }))
 })
+const teamFilter = useSelectFilter(teamOptionsAll)
 
 // Selected team data
 const selectedTeamData = computed(() => {
@@ -360,7 +365,7 @@ const insights = computed(() => {
 })
 
 // Auto-select top 3 teams on mount
-watch(() => teamOptions.value, (options) => {
+watch(() => teamOptionsAll.value, (options) => {
   if (options.length > 0 && selectedTeams.value.length === 0) {
     selectedTeams.value = options.slice(0, 3).map(o => o.value)
   }

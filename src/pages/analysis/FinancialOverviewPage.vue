@@ -95,7 +95,7 @@
             <div class="filters-grid">
               <q-select
                 v-model="filters.categoryIds"
-                :options="categoryOptions"
+                :options="categoryFilter.options.value"
                 label="Categorías"
                 outlined
                 dense
@@ -104,13 +104,26 @@
                 map-options
                 clearable
                 use-chips
+                use-input
+                input-debounce="0"
                 class="filter-field"
+                @filter="categoryFilter.filter"
               >
                 <template #prepend><q-icon name="category" size="18px" /></template>
+                <template #option="scope">
+                  <q-item v-bind="scope.itemProps">
+                    <q-item-section avatar>
+                      <q-icon :name="scope.opt.icon || 'circle'" :style="{ color: scope.opt.color }" size="20px" />
+                    </q-item-section>
+                    <q-item-section>
+                      <q-item-label>{{ scope.opt.label }}</q-item-label>
+                    </q-item-section>
+                  </q-item>
+                </template>
               </q-select>
               <q-select
                 v-model="filters.projectIds"
-                :options="projectOptions"
+                :options="projectFilter.options.value"
                 label="Proyectos"
                 outlined
                 dense
@@ -119,13 +132,16 @@
                 map-options
                 clearable
                 use-chips
+                use-input
+                input-debounce="0"
                 class="filter-field"
+                @filter="projectFilter.filter"
               >
                 <template #prepend><q-icon name="folder" size="18px" /></template>
               </q-select>
               <q-select
                 v-model="filters.eventIds"
-                :options="eventOptions"
+                :options="eventFilter.options.value"
                 label="Eventos"
                 outlined
                 dense
@@ -134,13 +150,16 @@
                 map-options
                 clearable
                 use-chips
+                use-input
+                input-debounce="0"
                 class="filter-field"
+                @filter="eventFilter.filter"
               >
                 <template #prepend><q-icon name="event" size="18px" /></template>
               </q-select>
               <q-select
                 v-model="filters.ageCategoryIds"
-                :options="ageCategoryOptions"
+                :options="ageCategoryFilter.options.value"
                 label="Categoría de edad"
                 outlined
                 dense
@@ -149,13 +168,16 @@
                 map-options
                 clearable
                 use-chips
+                use-input
+                input-debounce="0"
                 class="filter-field"
+                @filter="ageCategoryFilter.filter"
               >
                 <template #prepend><q-icon name="groups" size="18px" /></template>
               </q-select>
               <q-select
                 v-model="filters.teamIds"
-                :options="teamOptionsForSeason"
+                :options="teamFilter.options.value"
                 label="Equipos"
                 outlined
                 dense
@@ -164,7 +186,10 @@
                 map-options
                 clearable
                 use-chips
+                use-input
+                input-debounce="0"
                 class="filter-field"
+                @filter="teamFilter.filter"
               >
                 <template #prepend><q-icon name="shield" size="18px" /></template>
               </q-select>
@@ -414,6 +439,7 @@ import { useCatalogsStore } from 'src/stores/catalogs'
 import { computeSeason, getSeasonOptions, getSeasonDates } from 'src/types'
 import type { Season } from 'src/types'
 import { formatCurrency } from 'src/utils/formatters'
+import { useSelectFilter } from 'src/composables/useSelectFilter'
 import WhatIfSimulator from 'src/components/WhatIfSimulator.vue'
 
 ChartJS.register(
@@ -508,16 +534,16 @@ const comparisonOptions = computed(() => {
 })
 
 // ─── FILTER OPTIONS ────────────────────────────────────
-const categoryOptions = computed(() => {
+const allCategoryOptions = computed(() => {
   const tree = categoriesStore.getCategoriesTree('income')
   const treeExpense = categoriesStore.getCategoriesTree('expense')
-  const opts: { label: string; value: string }[] = []
+  const opts: { label: string; value: string; icon?: string; color?: string; isParent?: boolean }[] = []
 
   const addTree = (items: typeof tree, prefix: string) => {
     items.forEach(parent => {
-      opts.push({ label: `${prefix} ${parent.name}`, value: parent.id })
+      opts.push({ label: `${prefix} ${parent.name}`, value: parent.id, icon: parent.icon, color: parent.color, isParent: true })
       parent.subcategories.forEach(sub => {
-        opts.push({ label: `  ↳ ${sub.name}`, value: sub.id })
+        opts.push({ label: `  ↳ ${sub.name}`, value: sub.id, icon: sub.icon, color: sub.color || parent.color })
       })
     })
   }
@@ -527,19 +553,19 @@ const categoryOptions = computed(() => {
   return opts
 })
 
-const projectOptions = computed(() =>
+const allProjectOptions = computed(() =>
   teamsStore.projects.map(p => ({ label: p.name, value: p.id }))
 )
 
-const eventOptions = computed(() =>
+const allEventOptions = computed(() =>
   teamsStore.events.map(e => ({ label: e.name, value: e.id }))
 )
 
-const ageCategoryOptions = computed(() =>
+const allAgeCategoryOptions = computed(() =>
   catalogsStore.activeAgeCategories.map(ac => ({ label: ac.name, value: ac.id }))
 )
 
-const teamOptionsForSeason = computed(() => {
+const allTeamOptions = computed(() => {
   // Show teams from the primary season + comparison seasons
   const allSeasons = [primarySeason.value, ...comparisonSeasons.value]
   const seen = new Set<string>()
@@ -555,6 +581,13 @@ const teamOptionsForSeason = computed(() => {
   }
   return opts
 })
+
+// Searchable filter wrappers
+const categoryFilter = useSelectFilter(allCategoryOptions)
+const projectFilter = useSelectFilter(allProjectOptions)
+const eventFilter = useSelectFilter(allEventOptions)
+const ageCategoryFilter = useSelectFilter(allAgeCategoryOptions)
+const teamFilter = useSelectFilter(allTeamOptions)
 
 const activeFilterCount = computed(() => {
   let count = 0
