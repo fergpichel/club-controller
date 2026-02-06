@@ -304,7 +304,7 @@
                   use-input
                   input-debounce="0"
                   class="corrector-select"
-                  @filter="s.type === 'income' ? incomeCorrectorFilter.filter : expenseCorrectorFilter.filter"
+                  @filter="(val: string, update: (fn: () => void) => void) => (s.type === 'income' ? incomeCorrectorFilter.filter : expenseCorrectorFilter.filter)(val, update)"
                   @update:model-value="(val: string | null) => applyCategoryCorrection(idx, val)"
                 >
                   <template #option="scope">
