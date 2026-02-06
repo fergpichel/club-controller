@@ -104,9 +104,11 @@ import {
   Tooltip,
   Legend
 } from 'chart.js'
-import { format, startOfMonth, endOfMonth, eachMonthOfInterval, subMonths } from 'date-fns'
+import { format, startOfMonth, endOfMonth } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { useTransactionsStore } from 'src/stores/transactions'
+import { computeSeason, getSeasonDates } from 'src/types'
+import { formatCurrency, formatCurrencyShort } from 'src/utils/formatters'
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend)
 
@@ -116,6 +118,7 @@ interface Props {
   months?: number
   startingBalance?: number
   showDetails?: boolean
+  season?: string
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -123,40 +126,60 @@ const props = withDefaults(defineProps<Props>(), {
   subtitle: 'Flujo de caja mensual',
   months: 12,
   startingBalance: 0,
-  showDetails: true
+  showDetails: true,
+  season: ''
 })
 
 const transactionsStore = useTransactionsStore()
 
-// Calculate monthly data
+// Determine season to use
+const effectiveSeason = computed(() => props.season || computeSeason(new Date()))
+
+// Generate the 12 season months (Jul → Jun)
+const seasonMonths = computed(() => {
+  const dates = getSeasonDates(effectiveSeason.value)
+  const startYear = dates.start.getFullYear()
+  const months: Date[] = []
+  // Jul(6)..Dec(11) of startYear
+  for (let m = 6; m < 12; m++) {
+    months.push(new Date(startYear, m, 1))
+  }
+  // Jan(0)..Jun(5) of startYear+1
+  for (let m = 0; m < 6; m++) {
+    months.push(new Date(startYear + 1, m, 1))
+  }
+  return months
+})
+
+// Calculate monthly data aligned to season
 const monthlyData = computed(() => {
   const now = new Date()
-  const startDate = subMonths(startOfMonth(now), props.months - 1)
-  const months = eachMonthOfInterval({ start: startDate, end: now })
-  
-  return months.map(monthDate => {
+
+  return seasonMonths.value.map(monthDate => {
     const monthStart = startOfMonth(monthDate)
     const monthEnd = endOfMonth(monthDate)
-    
-    const monthTransactions = transactionsStore.transactions.filter(t => {
+    const isFuture = monthStart > now
+
+    const monthTransactions = isFuture ? [] : transactionsStore.transactions.filter(t => {
       const txnDate = new Date(t.date)
       return txnDate >= monthStart && txnDate <= monthEnd && t.status !== 'rejected'
     })
-    
+
     const income = monthTransactions
       .filter(t => t.type === 'income')
       .reduce((sum, t) => sum + t.amount, 0)
-    
+
     const expenses = monthTransactions
       .filter(t => t.type === 'expense')
       .reduce((sum, t) => sum + t.amount, 0)
-    
+
     return {
-      label: format(monthDate, 'MMM yy', { locale: es }),
+      label: format(monthDate, 'MMM', { locale: es }),
       fullLabel: format(monthDate, 'MMMM yyyy', { locale: es }),
       income,
       expenses,
-      net: income - expenses
+      net: income - expenses,
+      isFuture
     }
   })
 })
@@ -301,22 +324,6 @@ const chartOptions = computed(() => ({
     }
   }
 }))
-
-function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat('es-ES', {
-    style: 'currency',
-    currency: 'EUR',
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0
-  }).format(amount)
-}
-
-function formatCurrencyShort(amount: number): string {
-  if (Math.abs(amount) >= 1000) {
-    return `${(amount / 1000).toFixed(1).replace('.0', '')}k€`
-  }
-  return `${Math.round(amount)}€`
-}
 
 // Data is fetched by parent component
 </script>

@@ -13,37 +13,29 @@ import {
 } from 'firebase/firestore'
 import { db } from 'src/boot/firebase'
 import { useAuthStore } from './auth'
-import { isMockEnabled } from 'src/mocks'
-import { categoriesApi } from 'src/services/api'
 import type { Category, CategoryType } from 'src/types'
+import { UNCATEGORIZED_CATEGORY_ID } from 'src/types'
+import { ALL_DEFAULT_CATEGORIES, type CategoryTemplate } from 'src/config/defaultCategories'
+import { logger } from 'src/utils/logger'
 
-// Default categories for new clubs
-const DEFAULT_EXPENSE_CATEGORIES: Omit<Category, 'id'>[] = [
-  { name: 'Material deportivo', type: 'expense', icon: 'sports_soccer', color: '#2196F3', isActive: true },
-  { name: 'Equipamiento', type: 'expense', icon: 'checkroom', color: '#4CAF50', isActive: true },
-  { name: 'Transporte', type: 'expense', icon: 'directions_bus', color: '#FF9800', isActive: true },
-  { name: 'Instalaciones', type: 'expense', icon: 'stadium', color: '#9C27B0', isActive: true },
-  { name: 'Alimentación', type: 'expense', icon: 'restaurant', color: '#F44336', isActive: true },
-  { name: 'Seguros', type: 'expense', icon: 'security', color: '#607D8B', isActive: true },
-  { name: 'Licencias y federación', type: 'expense', icon: 'card_membership', color: '#795548', isActive: true },
-  { name: 'Personal técnico', type: 'expense', icon: 'person', color: '#3F51B5', isActive: true },
-  { name: 'Marketing', type: 'expense', icon: 'campaign', color: '#E91E63', isActive: true },
-  { name: 'Administración', type: 'expense', icon: 'business', color: '#00BCD4', isActive: true },
-  { name: 'Otros gastos', type: 'expense', icon: 'more_horiz', color: '#9E9E9E', isActive: true }
-]
+// Special "uncategorized" categories — always present
+const UNCATEGORIZED_EXPENSE: Category = {
+  id: UNCATEGORIZED_CATEGORY_ID,
+  name: 'Sin categorizar',
+  type: 'expense',
+  icon: 'help_outline',
+  color: '#9E9E9E',
+  isActive: true
+}
 
-const DEFAULT_INCOME_CATEGORIES: Omit<Category, 'id'>[] = [
-  { name: 'Cuotas socios', type: 'income', icon: 'groups', color: '#4CAF50', isActive: true },
-  { name: 'Inscripciones', type: 'income', icon: 'how_to_reg', color: '#2196F3', isActive: true },
-  { name: 'Subvenciones', type: 'income', icon: 'account_balance', color: '#9C27B0', isActive: true },
-  { name: 'Patrocinios', type: 'income', icon: 'handshake', color: '#FF9800', isActive: true },
-  { name: 'Eventos', type: 'income', icon: 'event', color: '#E91E63', isActive: true },
-  { name: 'Merchandising', type: 'income', icon: 'store', color: '#00BCD4', isActive: true },
-  { name: 'Alquiler instalaciones', type: 'income', icon: 'home', color: '#795548', isActive: true },
-  { name: 'Donaciones', type: 'income', icon: 'volunteer_activism', color: '#F44336', isActive: true },
-  { name: 'Premios y trofeos', type: 'income', icon: 'emoji_events', color: '#FFC107', isActive: true },
-  { name: 'Otros ingresos', type: 'income', icon: 'more_horiz', color: '#9E9E9E', isActive: true }
-]
+const UNCATEGORIZED_INCOME: Category = {
+  id: `${UNCATEGORIZED_CATEGORY_ID}_income`,
+  name: 'Sin categorizar',
+  type: 'income',
+  icon: 'help_outline',
+  color: '#9E9E9E',
+  isActive: true
+}
 
 export const useCategoriesStore = defineStore('categories', () => {
   // State
@@ -89,12 +81,6 @@ export const useCategoriesStore = defineStore('categories', () => {
     error.value = null
 
     try {
-      if (isMockEnabled()) {
-        categories.value = await categoriesApi.getAll()
-        loading.value = false
-        return
-      }
-
       const authStore = useAuthStore()
       if (!authStore.clubId) return
 
@@ -113,41 +99,106 @@ export const useCategoriesStore = defineStore('categories', () => {
       if (categories.value.length === 0) {
         await initializeDefaultCategories()
       }
+
+      // Ensure uncategorized categories always present
+      ensureUncategorized()
     } catch (e) {
-      console.error('Error fetching categories:', e)
+      logger.error('Error fetching categories:', e)
       error.value = 'Error al cargar categorías'
     } finally {
       loading.value = false
     }
   }
 
-  async function initializeDefaultCategories() {
+  function ensureUncategorized() {
+    if (!categories.value.find(c => c.id === UNCATEGORIZED_EXPENSE.id)) {
+      categories.value.push({ ...UNCATEGORIZED_EXPENSE })
+    }
+    if (!categories.value.find(c => c.id === UNCATEGORIZED_INCOME.id)) {
+      categories.value.push({ ...UNCATEGORIZED_INCOME })
+    }
+  }
+
+  /**
+   * Create the full hierarchy of default categories (parents + subcategories)
+   * from the template defined in src/config/defaultCategories.ts.
+   *
+   * @param template - Category templates to seed. Defaults to ALL_DEFAULT_CATEGORIES.
+   * @returns The number of categories created.
+   */
+  async function seedDefaultCategories(template: CategoryTemplate[] = ALL_DEFAULT_CATEGORIES): Promise<number> {
     const authStore = useAuthStore()
-    if (!authStore.clubId && !isMockEnabled()) return
+    if (!authStore.clubId) return 0
 
-    const allDefaults = [...DEFAULT_EXPENSE_CATEGORIES, ...DEFAULT_INCOME_CATEGORIES]
+    let created = 0
 
-    for (const category of allDefaults) {
+    for (const tpl of template) {
       try {
-        if (isMockEnabled()) {
-          const newCategory = await categoriesApi.create(category)
-          categories.value.push(newCategory)
-        } else {
-          const docRef = await addDoc(collection(db, 'categories'), {
-            ...category,
-            clubId: authStore.clubId,
-            createdAt: serverTimestamp()
-          })
+        // Create parent category
+        const parentData: Record<string, unknown> = {
+          name: tpl.name,
+          type: tpl.type,
+          icon: tpl.icon,
+          color: tpl.color,
+          isActive: true,
+          clubId: authStore.clubId,
+          createdAt: serverTimestamp()
+        }
+        if (tpl.isSensitive) parentData.isSensitive = true
 
-          categories.value.push({
-            ...category,
-            id: docRef.id
-          })
+        const parentRef = await addDoc(collection(db, 'categories'), parentData)
+        const parentCategory: Category = {
+          id: parentRef.id,
+          name: tpl.name,
+          type: tpl.type,
+          icon: tpl.icon,
+          color: tpl.color,
+          isActive: true,
+          ...(tpl.isSensitive ? { isSensitive: true } : {})
+        }
+        categories.value.push(parentCategory)
+        created++
+
+        // Create subcategories
+        if (tpl.children?.length) {
+          for (const child of tpl.children) {
+            const childData: Record<string, unknown> = {
+              name: child.name,
+              type: tpl.type,
+              icon: child.icon,
+              color: child.color || tpl.color,
+              parentId: parentRef.id,
+              isActive: true,
+              clubId: authStore.clubId,
+              createdAt: serverTimestamp()
+            }
+            if (child.isSensitive) childData.isSensitive = true
+
+            const childRef = await addDoc(collection(db, 'categories'), childData)
+            categories.value.push({
+              id: childRef.id,
+              name: child.name,
+              type: tpl.type,
+              icon: child.icon,
+              color: child.color || tpl.color,
+              parentId: parentRef.id,
+              isActive: true,
+              ...(child.isSensitive ? { isSensitive: true } : {})
+            })
+            created++
+          }
         }
       } catch (e) {
-        console.error('Error creating default category:', e)
+        logger.error(`Error seeding category "${tpl.name}":`, e)
       }
     }
+
+    return created
+  }
+
+  /** Alias kept for backward compat — called on first fetch when no categories exist */
+  async function initializeDefaultCategories() {
+    await seedDefaultCategories()
   }
 
   async function createCategory(data: Omit<Category, 'id'>) {
@@ -155,15 +206,12 @@ export const useCategoriesStore = defineStore('categories', () => {
     error.value = null
 
     try {
-      if (isMockEnabled()) {
-        const newCategory = await categoriesApi.create(data)
-        categories.value.push(newCategory)
-        loading.value = false
-        return newCategory
-      }
-
       const authStore = useAuthStore()
       if (!authStore.clubId) return null
+      if (!authStore.canManageSettings) {
+        error.value = 'Sin permisos para crear categorías'
+        return null
+      }
 
       const docRef = await addDoc(collection(db, 'categories'), {
         ...data,
@@ -179,7 +227,7 @@ export const useCategoriesStore = defineStore('categories', () => {
       categories.value.push(newCategory)
       return newCategory
     } catch (e) {
-      console.error('Error creating category:', e)
+      logger.error('Error creating category:', e)
       error.value = 'Error al crear categoría'
       return null
     } finally {
@@ -192,20 +240,19 @@ export const useCategoriesStore = defineStore('categories', () => {
     error.value = null
 
     try {
-      if (isMockEnabled()) {
-        await categoriesApi.update(id, data)
-        const index = categories.value.findIndex(c => c.id === id)
-        if (index !== -1) {
-          categories.value[index] = { ...categories.value[index], ...data }
-        }
-        loading.value = false
-        return true
+      const authStore = useAuthStore()
+      if (!authStore.canManageSettings) {
+        error.value = 'Sin permisos para editar categorías'
+        return false
       }
 
-      await updateDoc(doc(db, 'categories', id), {
-        ...data,
-        updatedAt: serverTimestamp()
-      })
+      // Strip undefined values — Firestore rejects them
+      const cleanData: Record<string, unknown> = { updatedAt: serverTimestamp() }
+      for (const [key, value] of Object.entries(data)) {
+        if (value !== undefined) cleanData[key] = value
+      }
+
+      await updateDoc(doc(db, 'categories', id), cleanData)
 
       const index = categories.value.findIndex(c => c.id === id)
       if (index !== -1) {
@@ -214,7 +261,7 @@ export const useCategoriesStore = defineStore('categories', () => {
 
       return true
     } catch (e) {
-      console.error('Error updating category:', e)
+      logger.error('Error updating category:', e)
       error.value = 'Error al actualizar categoría'
       return false
     } finally {
@@ -227,18 +274,17 @@ export const useCategoriesStore = defineStore('categories', () => {
     error.value = null
 
     try {
-      if (isMockEnabled()) {
-        await categoriesApi.delete(id)
-        categories.value = categories.value.filter(c => c.id !== id)
-        loading.value = false
-        return true
+      const authStore = useAuthStore()
+      if (!authStore.canManageSettings) {
+        error.value = 'Sin permisos para eliminar categorías'
+        return false
       }
 
       await deleteDoc(doc(db, 'categories', id))
       categories.value = categories.value.filter(c => c.id !== id)
       return true
     } catch (e) {
-      console.error('Error deleting category:', e)
+      logger.error('Error deleting category:', e)
       error.value = 'Error al eliminar categoría'
       return false
     } finally {
@@ -308,6 +354,14 @@ export const useCategoriesStore = defineStore('categories', () => {
     return ids
   }
 
+  function isUncategorized(categoryId: string): boolean {
+    return categoryId === UNCATEGORIZED_EXPENSE.id || categoryId === UNCATEGORIZED_INCOME.id
+  }
+
+  function getUncategorizedId(type: 'income' | 'expense'): string {
+    return type === 'income' ? UNCATEGORIZED_INCOME.id : UNCATEGORIZED_EXPENSE.id
+  }
+
   return {
     // State
     categories,
@@ -327,6 +381,7 @@ export const useCategoriesStore = defineStore('categories', () => {
 
     // Actions
     fetchCategories,
+    seedDefaultCategories,
     createCategory,
     updateCategory,
     deleteCategory,
@@ -340,6 +395,10 @@ export const useCategoriesStore = defineStore('categories', () => {
     isSubcategory,
     getCategoryWithParent,
     getCategoriesTree,
-    getAllCategoryIds
+    getAllCategoryIds,
+
+    // Uncategorized helpers
+    isUncategorized,
+    getUncategorizedId
   }
 })

@@ -161,6 +161,7 @@ import { useTransactionsStore } from 'src/stores/transactions';
 import { useCategoriesStore } from 'src/stores/categories';
 import { useTeamsStore } from 'src/stores/teams';
 import TransactionItem from 'src/components/TransactionItem.vue';
+import { formatCurrency } from 'src/utils/formatters'
 
 const transactionsStore = useTransactionsStore();
 const categoriesStore = useCategoriesStore();
@@ -257,12 +258,6 @@ const teamOptions = computed(() => {
 });
 
 // Methods
-function formatCurrency(value: number): string {
-  return new Intl.NumberFormat('es-ES', {
-    style: 'currency',
-    currency: 'EUR'
-  }).format(value);
-}
 
 function previousMonth() {
   currentDate.value = subMonths(currentDate.value, 1);

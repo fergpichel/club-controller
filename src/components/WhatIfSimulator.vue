@@ -7,12 +7,21 @@
       </div>
       <div class="intro-content">
         <h3>Simulador de Escenarios</h3>
-        <p>Ajusta las variables para ver cómo afectarían a las finanzas del club. Los cambios se calculan sobre los datos actuales de la temporada.</p>
+        <p>Ajusta las variables para ver cómo afectarían a las finanzas del club. Los cambios se calculan sobre el presupuesto de la temporada.</p>
+      </div>
+    </div>
+
+    <!-- No budget warning -->
+    <div v-if="!hasBudget" class="no-budget-card">
+      <q-icon name="info" size="24px" />
+      <div>
+        <p class="text-weight-medium">No hay presupuesto para esta temporada</p>
+        <p class="text-grey">Configura el presupuesto en <router-link :to="{ name: 'budget' }">Ajustes → Presupuesto</router-link> para poder simular escenarios.</p>
       </div>
     </div>
 
     <!-- Main Layout: Controls + Results -->
-    <div class="simulator-layout">
+    <div v-if="hasBudget" class="simulator-layout">
       <!-- Left: Controls -->
       <div class="controls-panel">
         <!-- Presets -->
@@ -33,7 +42,7 @@
         </div>
 
         <!-- Income Variables -->
-        <div class="variables-section">
+        <div v-if="incomeItems.length > 0" class="variables-section">
           <div class="section-header income">
             <q-icon name="trending_up" />
             <span>Ingresos</span>
@@ -43,94 +52,31 @@
           </div>
 
           <div class="variable-group">
-            <div class="variable-item">
+            <div v-for="item in incomeItems" :key="item.categoryId" class="variable-item">
               <div class="variable-header">
-                <span class="variable-name">Cuotas de socios</span>
-                <span class="variable-value" :class="{ positive: vars.cuotasChange > 0, negative: vars.cuotasChange < 0 }">
-                  {{ vars.cuotasChange >= 0 ? '+' : '' }}{{ vars.cuotasChange }}%
+                <span class="variable-name">{{ item.name }}</span>
+                <span class="variable-value" :class="{ positive: changes[item.categoryId] > 0, negative: changes[item.categoryId] < 0 }">
+                  {{ changes[item.categoryId] >= 0 ? '+' : '' }}{{ changes[item.categoryId] }}%
                 </span>
               </div>
               <q-slider
-                v-model="vars.cuotasChange"
-                :min="-50"
-                :max="50"
+                v-model="changes[item.categoryId]"
+                :min="-100"
+                :max="100"
                 :step="5"
                 label
                 color="positive"
                 track-color="grey-4"
               />
               <div class="variable-hint">
-                {{ formatCurrency(baseData.cuotas) }} → {{ formatCurrency(baseData.cuotas * (1 + vars.cuotasChange/100)) }}
-              </div>
-            </div>
-
-            <div class="variable-item">
-              <div class="variable-header">
-                <span class="variable-name">Número de socios</span>
-                <span class="variable-value" :class="{ positive: vars.sociosChange > 0, negative: vars.sociosChange < 0 }">
-                  {{ vars.sociosChange >= 0 ? '+' : '' }}{{ vars.sociosChange }}%
-                </span>
-              </div>
-              <q-slider
-                v-model="vars.sociosChange"
-                :min="-30"
-                :max="50"
-                :step="5"
-                label
-                color="positive"
-                track-color="grey-4"
-              />
-              <div class="variable-hint">
-                ~{{ Math.round(180 * (1 + vars.sociosChange/100)) }} socios (base: 180)
-              </div>
-            </div>
-
-            <div class="variable-item">
-              <div class="variable-header">
-                <span class="variable-name">Patrocinios</span>
-                <span class="variable-value" :class="{ positive: vars.patrociniosChange > 0, negative: vars.patrociniosChange < 0 }">
-                  {{ vars.patrociniosChange >= 0 ? '+' : '' }}{{ vars.patrociniosChange }}%
-                </span>
-              </div>
-              <q-slider
-                v-model="vars.patrociniosChange"
-                :min="-100"
-                :max="50"
-                :step="10"
-                label
-                color="positive"
-                track-color="grey-4"
-              />
-              <div class="variable-hint">
-                {{ formatCurrency(baseData.patrocinios) }} → {{ formatCurrency(baseData.patrocinios * (1 + vars.patrociniosChange/100)) }}
-              </div>
-            </div>
-
-            <div class="variable-item">
-              <div class="variable-header">
-                <span class="variable-name">Subvenciones</span>
-                <span class="variable-value" :class="{ positive: vars.subvencionesChange > 0, negative: vars.subvencionesChange < 0 }">
-                  {{ vars.subvencionesChange >= 0 ? '+' : '' }}{{ vars.subvencionesChange }}%
-                </span>
-              </div>
-              <q-slider
-                v-model="vars.subvencionesChange"
-                :min="-100"
-                :max="50"
-                :step="10"
-                label
-                color="positive"
-                track-color="grey-4"
-              />
-              <div class="variable-hint">
-                {{ formatCurrency(baseData.subvenciones) }} → {{ formatCurrency(baseData.subvenciones * (1 + vars.subvencionesChange/100)) }}
+                {{ formatCurrency(item.amount) }} → {{ formatCurrency(item.amount * (1 + changes[item.categoryId]/100)) }}
               </div>
             </div>
           </div>
         </div>
 
         <!-- Expense Variables -->
-        <div class="variables-section">
+        <div v-if="expenseItems.length > 0" class="variables-section">
           <div class="section-header expense">
             <q-icon name="trending_down" />
             <span>Gastos</span>
@@ -140,87 +86,24 @@
           </div>
 
           <div class="variable-group">
-            <div class="variable-item">
+            <div v-for="item in expenseItems" :key="item.categoryId" class="variable-item">
               <div class="variable-header">
-                <span class="variable-name">Personal (salarios)</span>
-                <span class="variable-value" :class="{ positive: vars.personalChange < 0, negative: vars.personalChange > 0 }">
-                  {{ vars.personalChange >= 0 ? '+' : '' }}{{ vars.personalChange }}%
+                <span class="variable-name">{{ item.name }}</span>
+                <span class="variable-value" :class="{ positive: changes[item.categoryId] < 0, negative: changes[item.categoryId] > 0 }">
+                  {{ changes[item.categoryId] >= 0 ? '+' : '' }}{{ changes[item.categoryId] }}%
                 </span>
               </div>
               <q-slider
-                v-model="vars.personalChange"
-                :min="-30"
-                :max="30"
+                v-model="changes[item.categoryId]"
+                :min="-100"
+                :max="100"
                 :step="5"
                 label
                 color="negative"
                 track-color="grey-4"
               />
               <div class="variable-hint">
-                {{ formatCurrency(baseData.personal) }} → {{ formatCurrency(baseData.personal * (1 + vars.personalChange/100)) }}
-              </div>
-            </div>
-
-            <div class="variable-item">
-              <div class="variable-header">
-                <span class="variable-name">Transporte</span>
-                <span class="variable-value" :class="{ positive: vars.transporteChange < 0, negative: vars.transporteChange > 0 }">
-                  {{ vars.transporteChange >= 0 ? '+' : '' }}{{ vars.transporteChange }}%
-                </span>
-              </div>
-              <q-slider
-                v-model="vars.transporteChange"
-                :min="-50"
-                :max="50"
-                :step="5"
-                label
-                color="negative"
-                track-color="grey-4"
-              />
-              <div class="variable-hint">
-                {{ formatCurrency(baseData.transporte) }} → {{ formatCurrency(baseData.transporte * (1 + vars.transporteChange/100)) }}
-              </div>
-            </div>
-
-            <div class="variable-item">
-              <div class="variable-header">
-                <span class="variable-name">Instalaciones</span>
-                <span class="variable-value" :class="{ positive: vars.instalacionesChange < 0, negative: vars.instalacionesChange > 0 }">
-                  {{ vars.instalacionesChange >= 0 ? '+' : '' }}{{ vars.instalacionesChange }}%
-                </span>
-              </div>
-              <q-slider
-                v-model="vars.instalacionesChange"
-                :min="-30"
-                :max="50"
-                :step="5"
-                label
-                color="negative"
-                track-color="grey-4"
-              />
-              <div class="variable-hint">
-                {{ formatCurrency(baseData.instalaciones) }} → {{ formatCurrency(baseData.instalaciones * (1 + vars.instalacionesChange/100)) }}
-              </div>
-            </div>
-
-            <div class="variable-item">
-              <div class="variable-header">
-                <span class="variable-name">Otros gastos</span>
-                <span class="variable-value" :class="{ positive: vars.otrosGastosChange < 0, negative: vars.otrosGastosChange > 0 }">
-                  {{ vars.otrosGastosChange >= 0 ? '+' : '' }}{{ vars.otrosGastosChange }}%
-                </span>
-              </div>
-              <q-slider
-                v-model="vars.otrosGastosChange"
-                :min="-30"
-                :max="30"
-                :step="5"
-                label
-                color="negative"
-                track-color="grey-4"
-              />
-              <div class="variable-hint">
-                {{ formatCurrency(baseData.otrosGastos) }} → {{ formatCurrency(baseData.otrosGastos * (1 + vars.otrosGastosChange/100)) }}
+                {{ formatCurrency(item.amount) }} → {{ formatCurrency(item.amount * (1 + changes[item.categoryId]/100)) }}
               </div>
             </div>
           </div>
@@ -246,7 +129,7 @@
           <div class="comparison-grid">
             <!-- Current -->
             <div class="comparison-column current">
-              <span class="column-label">Actual</span>
+              <span class="column-label">Presupuesto</span>
               <div class="metric">
                 <span class="metric-label">Ingresos</span>
                 <span class="metric-value">{{ formatCurrency(currentTotals.income) }}</span>
@@ -336,7 +219,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, reactive, onMounted } from 'vue'
+import { ref, computed, reactive, watch } from 'vue'
 import { Bar } from 'vue-chartjs'
 import {
   Chart as ChartJS,
@@ -347,96 +230,128 @@ import {
   Tooltip,
   Legend
 } from 'chart.js'
-import { useTransactionsStore } from 'src/stores/transactions'
-import { ANNUAL_BUDGET } from 'src/mocks/data'
+import { useBudgetStore } from 'src/stores/budget'
+import { useCategoriesStore } from 'src/stores/categories'
+import { formatCurrency } from 'src/utils/formatters'
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend)
 
-const transactionsStore = useTransactionsStore()
-
-// Simulation variables
-const vars = reactive({
-  cuotasChange: 0,
-  sociosChange: 0,
-  patrociniosChange: 0,
-  subvencionesChange: 0,
-  personalChange: 0,
-  transporteChange: 0,
-  instalacionesChange: 0,
-  otrosGastosChange: 0
-})
+const budgetStore = useBudgetStore()
+const categoriesStore = useCategoriesStore()
 
 const activePreset = ref<string | null>(null)
 
-// Preset scenarios
+// Whether a budget exists
+const hasBudget = computed(() => !!budgetStore.currentBudget)
+
+// Build items from budget allocations
+interface BudgetItem {
+  categoryId: string
+  name: string
+  amount: number
+}
+
+const incomeItems = computed<BudgetItem[]>(() => {
+  if (!budgetStore.currentBudget) return []
+  return budgetStore.currentBudget.incomeAllocations.map(a => ({
+    categoryId: a.categoryId,
+    name: categoriesStore.getCategoryById(a.categoryId)?.name || 'Categoría',
+    amount: a.amount
+  }))
+})
+
+const expenseItems = computed<BudgetItem[]>(() => {
+  if (!budgetStore.currentBudget) return []
+  return budgetStore.currentBudget.expenseAllocations.map(a => ({
+    categoryId: a.categoryId,
+    name: categoriesStore.getCategoryById(a.categoryId)?.name || 'Categoría',
+    amount: a.amount
+  }))
+})
+
+// Reactive change percentages per category (categoryId → %)
+const changes = reactive<Record<string, number>>({})
+
+// Initialize changes when budget changes
+watch([incomeItems, expenseItems], () => {
+  for (const item of [...incomeItems.value, ...expenseItems.value]) {
+    if (!(item.categoryId in changes)) {
+      changes[item.categoryId] = 0
+    }
+  }
+}, { immediate: true })
+
+// Preset scenarios (apply uniform % to all income/expense)
 const presets = [
   { 
     id: 'optimistic', 
     label: 'Optimista', 
     icon: 'sentiment_very_satisfied',
-    changes: { cuotasChange: 10, sociosChange: 15, patrociniosChange: 20, subvencionesChange: 10, personalChange: 5, transporteChange: 0, instalacionesChange: 0, otrosGastosChange: 0 }
+    incomeChange: 15,
+    expenseChange: 0
   },
   { 
     id: 'pessimistic', 
     label: 'Pesimista', 
     icon: 'sentiment_very_dissatisfied',
-    changes: { cuotasChange: 0, sociosChange: -10, patrociniosChange: -30, subvencionesChange: -20, personalChange: 5, transporteChange: 15, instalacionesChange: 10, otrosGastosChange: 10 }
+    incomeChange: -15,
+    expenseChange: 10
   },
   { 
     id: 'growth', 
     label: 'Crecimiento', 
     icon: 'rocket_launch',
-    changes: { cuotasChange: 5, sociosChange: 30, patrociniosChange: 10, subvencionesChange: 0, personalChange: 15, transporteChange: 20, instalacionesChange: 10, otrosGastosChange: 5 }
+    incomeChange: 25,
+    expenseChange: 15
   },
   { 
     id: 'austerity', 
     label: 'Austeridad', 
     icon: 'savings',
-    changes: { cuotasChange: 0, sociosChange: 0, patrociniosChange: 0, subvencionesChange: 0, personalChange: -10, transporteChange: -20, instalacionesChange: -15, otrosGastosChange: -20 }
+    incomeChange: 0,
+    expenseChange: -20
   },
   { 
-    id: 'sponsor-loss', 
-    label: 'Pérdida patrocinador', 
-    icon: 'person_off',
-    changes: { cuotasChange: 0, sociosChange: 0, patrociniosChange: -50, subvencionesChange: 0, personalChange: 0, transporteChange: 0, instalacionesChange: 0, otrosGastosChange: 0 }
+    id: 'crisis', 
+    label: 'Crisis', 
+    icon: 'warning',
+    incomeChange: -30,
+    expenseChange: 5
   },
   { 
-    id: 'fee-increase', 
-    label: 'Subir cuotas 15%', 
-    icon: 'price_change',
-    changes: { cuotasChange: 15, sociosChange: -5, patrociniosChange: 0, subvencionesChange: 0, personalChange: 0, transporteChange: 0, instalacionesChange: 0, otrosGastosChange: 0 }
+    id: 'neutral', 
+    label: 'Sin cambio', 
+    icon: 'remove',
+    incomeChange: 0,
+    expenseChange: 0
   }
 ]
 
-// Base data from budget
-const baseData = computed(() => ({
-  cuotas: ANNUAL_BUDGET.income.cuotas + ANNUAL_BUDGET.income.inscripciones,
-  patrocinios: ANNUAL_BUDGET.income.patrociniosEquipos,
-  subvenciones: ANNUAL_BUDGET.income.subvencionesPublicas,
-  otrosIngresos: ANNUAL_BUDGET.income.eventos + ANNUAL_BUDGET.income.cantina + 
-                 ANNUAL_BUDGET.income.merchandising + ANNUAL_BUDGET.income.escuelasVerano + 
-                 ANNUAL_BUDGET.income.otros,
-  personal: ANNUAL_BUDGET.expenses.salarios + ANNUAL_BUDGET.expenses.seguridadSocial,
-  transporte: ANNUAL_BUDGET.expenses.transporte,
-  instalaciones: ANNUAL_BUDGET.expenses.alquilerInstalaciones + ANNUAL_BUDGET.expenses.suministros,
-  otrosGastos: ANNUAL_BUDGET.expenses.equipaciones + ANNUAL_BUDGET.expenses.materialDeportivo + 
-               ANNUAL_BUDGET.expenses.arbitrajes + ANNUAL_BUDGET.expenses.federacion +
-               ANNUAL_BUDGET.expenses.seguros + ANNUAL_BUDGET.expenses.marketing +
-               ANNUAL_BUDGET.expenses.formacion + ANNUAL_BUDGET.expenses.mantenimiento +
-               ANNUAL_BUDGET.expenses.administrativos + ANNUAL_BUDGET.expenses.eventosGastos +
-               ANNUAL_BUDGET.expenses.tecnologia + ANNUAL_BUDGET.expenses.cantina +
-               ANNUAL_BUDGET.expenses.sanitario + ANNUAL_BUDGET.expenses.escuelasVeranoGastos +
-               ANNUAL_BUDGET.expenses.otros
-}))
-
-// Current totals
+// Current totals from budget
 const currentTotals = computed(() => {
-  const income = baseData.value.cuotas + baseData.value.patrocinios + baseData.value.subvenciones + baseData.value.otrosIngresos
-  const expenses = baseData.value.personal + baseData.value.transporte + baseData.value.instalaciones + baseData.value.otrosGastos
+  const income = incomeItems.value.reduce((sum, i) => sum + i.amount, 0)
+  const expenses = expenseItems.value.reduce((sum, i) => sum + i.amount, 0)
   return {
     income,
     expenses,
     balance: income - expenses
+  }
+})
+
+// Simulated totals
+const simulatedTotals = computed(() => {
+  const income = incomeItems.value.reduce((sum, i) => {
+    const change = changes[i.categoryId] || 0
+    return sum + i.amount * (1 + change / 100)
+  }, 0)
+  const expenses = expenseItems.value.reduce((sum, i) => {
+    const change = changes[i.categoryId] || 0
+    return sum + i.amount * (1 + change / 100)
+  }, 0)
+  return {
+    income: Math.round(income),
+    expenses: Math.round(expenses),
+    balance: Math.round(income - expenses)
   }
 })
 
@@ -451,31 +366,6 @@ const totalExpenseChange = computed(() => {
   const base = currentTotals.value.expenses
   const simulated = simulatedTotals.value.expenses
   return base > 0 ? ((simulated - base) / base) * 100 : 0
-})
-
-// Simulated totals
-const simulatedTotals = computed(() => {
-  // Apply sociosChange to cuotas (more members = more fees)
-  const sociosFactor = 1 + vars.sociosChange / 100
-  const cuotasWithSocios = baseData.value.cuotas * sociosFactor * (1 + vars.cuotasChange / 100)
-  
-  const income = 
-    cuotasWithSocios +
-    baseData.value.patrocinios * (1 + vars.patrociniosChange / 100) +
-    baseData.value.subvenciones * (1 + vars.subvencionesChange / 100) +
-    baseData.value.otrosIngresos * sociosFactor // Other income also scales with members
-
-  const expenses = 
-    baseData.value.personal * (1 + vars.personalChange / 100) +
-    baseData.value.transporte * (1 + vars.transporteChange / 100) * sociosFactor + // More members = more transport
-    baseData.value.instalaciones * (1 + vars.instalacionesChange / 100) +
-    baseData.value.otrosGastos * (1 + vars.otrosGastosChange / 100) * Math.sqrt(sociosFactor) // Partial scaling
-
-  return {
-    income: Math.round(income),
-    expenses: Math.round(expenses),
-    balance: Math.round(income - expenses)
-  }
 })
 
 // Differences
@@ -520,22 +410,20 @@ const impactStatus = computed(() => {
 const impactInsights = computed(() => {
   const insights = []
   
-  // Balance insight
   if (balanceDiff.value > 0) {
     insights.push({
       icon: 'arrow_upward',
       color: 'positive',
-      text: `El balance mejoraría en ${formatCurrency(balanceDiff.value)} respecto al escenario actual.`
+      text: `El balance mejoraría en ${formatCurrency(balanceDiff.value)} respecto al presupuesto.`
     })
   } else if (balanceDiff.value < 0) {
     insights.push({
       icon: 'arrow_downward',
       color: 'negative',
-      text: `El balance empeoraría en ${formatCurrency(Math.abs(balanceDiff.value))} respecto al escenario actual.`
+      text: `El balance empeoraría en ${formatCurrency(Math.abs(balanceDiff.value))} respecto al presupuesto.`
     })
   }
   
-  // Negative balance warning
   if (simulatedTotals.value.balance < 0) {
     insights.push({
       icon: 'dangerous',
@@ -543,22 +431,12 @@ const impactInsights = computed(() => {
       text: `¡Alerta! El escenario resultaría en un déficit de ${formatCurrency(Math.abs(simulatedTotals.value.balance))}.`
     })
   }
-  
-  // Income dependency
-  if (vars.patrociniosChange < -30) {
+
+  if (totalIncomeChange.value < -20) {
     insights.push({
       icon: 'info',
       color: 'warning',
-      text: 'La pérdida significativa de patrocinios debería compensarse con otras fuentes de ingreso.'
-    })
-  }
-  
-  // Growth analysis
-  if (vars.sociosChange > 20) {
-    insights.push({
-      icon: 'groups',
-      color: 'info',
-      text: `Un crecimiento del ${vars.sociosChange}% en socios también aumentaría gastos de transporte y material.`
+      text: 'Una caída significativa de ingresos debería compensarse con recortes de gastos.'
     })
   }
   
@@ -572,17 +450,13 @@ const recommendations = computed(() => {
   if (simulatedTotals.value.balance < 0) {
     recs.push('Considera reducir gastos no esenciales o buscar nuevas fuentes de ingreso.')
   }
-  
-  if (vars.patrociniosChange < -30 && vars.cuotasChange === 0) {
-    recs.push('Ante la pérdida de patrocinadores, evalúa un incremento moderado de cuotas (5-10%).')
+
+  if (totalIncomeChange.value < -20 && totalExpenseChange.value >= 0) {
+    recs.push('Ante la caída de ingresos, evalúa medidas de austeridad en paralelo.')
   }
   
-  if (vars.sociosChange > 20 && vars.personalChange === 0) {
-    recs.push('El crecimiento de socios puede requerir más personal técnico. Planifica la contratación.')
-  }
-  
-  if (vars.transporteChange > 20) {
-    recs.push('Explora alternativas de transporte: carpooling, convenios con empresas locales.')
+  if (totalExpenseChange.value > 20) {
+    recs.push('El incremento de gastos es significativo. Asegúrate de que sea sostenible.')
   }
   
   if (balanceDiff.value > 15000) {
@@ -597,7 +471,7 @@ const chartData = computed(() => ({
   labels: ['Ingresos', 'Gastos', 'Balance'],
   datasets: [
     {
-      label: 'Actual',
+      label: 'Presupuesto',
       data: [currentTotals.value.income, currentTotals.value.expenses, currentTotals.value.balance],
       backgroundColor: ['rgba(16, 185, 129, 0.6)', 'rgba(239, 68, 68, 0.6)', currentTotals.value.balance >= 0 ? 'rgba(99, 91, 255, 0.6)' : 'rgba(239, 68, 68, 0.6)'],
       borderColor: ['#10B981', '#EF4444', currentTotals.value.balance >= 0 ? '#635BFF' : '#EF4444'],
@@ -662,32 +536,24 @@ const chartOptions = {
 // Functions
 function applyPreset(preset: typeof presets[0]) {
   activePreset.value = preset.id
-  Object.assign(vars, preset.changes)
+  for (const item of incomeItems.value) {
+    changes[item.categoryId] = preset.incomeChange
+  }
+  for (const item of expenseItems.value) {
+    changes[item.categoryId] = preset.expenseChange
+  }
 }
 
 function resetAll() {
   activePreset.value = null
-  Object.keys(vars).forEach(key => {
-    vars[key as keyof typeof vars] = 0
-  })
-}
-
-function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat('es-ES', {
-    style: 'currency',
-    currency: 'EUR',
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0
-  }).format(amount)
+  for (const key of Object.keys(changes)) {
+    changes[key] = 0
+  }
 }
 
 function formatPercent(value: number): string {
   return `${value.toFixed(1)}%`
 }
-
-onMounted(async () => {
-  await transactionsStore.fetchTransactions({})
-})
 </script>
 
 <style lang="scss" scoped>
@@ -732,6 +598,37 @@ onMounted(async () => {
       color: var(--color-text-secondary);
       line-height: 1.5;
     }
+  }
+}
+
+.no-budget-card {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-5);
+  background: rgba(245, 158, 11, 0.08);
+  border: 1px solid rgba(245, 158, 11, 0.25);
+  border-radius: var(--radius-xl);
+  color: var(--color-text-secondary);
+
+  .q-icon {
+    color: #F59E0B;
+    flex-shrink: 0;
+    margin-top: 2px;
+  }
+
+  p {
+    margin: 0 0 var(--space-1);
+    font-size: 0.9375rem;
+    line-height: 1.5;
+    &:last-child { margin: 0; }
+  }
+
+  a {
+    color: #635BFF;
+    text-decoration: none;
+    font-weight: 500;
+    &:hover { text-decoration: underline; }
   }
 }
 

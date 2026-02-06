@@ -224,6 +224,7 @@ import { startOfMonth, endOfMonth, subMonths, startOfYear, format } from 'date-f
 import { es } from 'date-fns/locale'
 import { useTransactionsStore } from 'src/stores/transactions'
 import { useCategoriesStore } from 'src/stores/categories'
+import { formatCurrency, formatCurrencyShort } from 'src/utils/formatters'
 
 const transactionsStore = useTransactionsStore()
 const categoriesStore = useCategoriesStore()
@@ -568,27 +569,9 @@ function truncateText(text: string, maxLength: number): string {
   return text.substring(0, maxLength - 1) + '…'
 }
 
-function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat('es-ES', {
-    style: 'currency',
-    currency: 'EUR',
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0
-  }).format(amount)
-}
-
-function formatCurrencyShort(amount: number): string {
-  if (amount >= 1000) {
-    return `${(amount / 1000).toFixed(1).replace('.0', '')}k€`
-  }
-  return `${amount}€`
-}
-
 onMounted(async () => {
-  await Promise.all([
-    transactionsStore.fetchTransactions({}),
-    categoriesStore.fetchCategories()
-  ])
+  // Transactions are loaded by parent page; only fetch categories here
+  await categoriesStore.fetchCategories()
   
   // Track mouse for tooltip
   document.addEventListener('mousemove', (e) => {

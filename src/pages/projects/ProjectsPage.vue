@@ -1,20 +1,33 @@
 <template>
   <q-page class="projects-page">
     <!-- Header -->
-    <div class="page-header projects-header">
+    <div class="page-header">
       <div class="row items-center justify-between">
         <div>
           <h1>Proyectos</h1>
-          <p class="header-subtitle">{{ projects.length }} proyectos</p>
+          <p class="header-subtitle">{{ seasonProjects.length }} proyectos en {{ selectedSeason }}</p>
         </div>
-        <q-btn
-          v-if="authStore.isManager"
-          color="white"
-          text-color="secondary"
-          icon="add"
-          label="Nuevo proyecto"
-          @click="showCreateDialog = true"
-        />
+        <div class="row items-center q-gutter-sm">
+          <q-select
+            v-model="selectedSeason"
+            :options="seasonOptions"
+            label="Temporada"
+            outlined
+            dense
+            emit-value
+            map-options
+            style="min-width: 170px"
+          />
+          <q-btn
+            v-if="authStore.isManager"
+            color="primary"
+            text-color="white"
+            icon="add"
+            label="Nuevo proyecto"
+            no-caps
+            @click="showCreateDialog = true"
+          />
+        </div>
       </div>
     </div>
 
@@ -31,7 +44,7 @@
         <q-card
           v-for="project in filteredProjects"
           :key="project.id"
-          class="project-card q-mb-md animate-stagger"
+          class="project-card q-mb-md"
           clickable
           @click="$router.push({ name: 'project-detail', params: { id: project.id } })"
         >
@@ -64,15 +77,17 @@
       </div>
 
       <!-- Empty state -->
-      <div v-else class="empty-state">
-        <q-icon name="folder_open" class="empty-icon" />
-        <p class="empty-title">Sin proyectos</p>
-        <p class="empty-description">Crea proyectos para organizar actividades específicas</p>
+      <div v-else class="empty-state text-center q-pa-xl">
+        <q-icon name="folder_open" size="64px" color="grey-5" />
+        <p class="text-h6 text-grey-5 q-mt-md">Sin proyectos en {{ selectedSeason }}</p>
+        <p class="text-grey-6">Crea proyectos para organizar actividades específicas</p>
         <q-btn
           v-if="authStore.isManager"
           color="primary"
           label="Crear proyecto"
           icon="add"
+          no-caps
+          class="q-mt-md"
           @click="showCreateDialog = true"
         />
       </div>
@@ -84,6 +99,8 @@
         <q-card-section class="row items-center">
           <q-avatar icon="folder" color="secondary" text-color="white" />
           <span class="q-ml-sm text-h6">Nuevo proyecto</span>
+          <q-space />
+          <q-badge color="primary" :label="selectedSeason" />
         </q-card-section>
 
         <q-card-section>
@@ -106,61 +123,63 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue';
-import { useQuasar } from 'quasar';
-import { format } from 'date-fns';
-import { useAuthStore } from 'src/stores/auth';
-import { useTeamsStore } from 'src/stores/teams';
-import { useTransactionsStore } from 'src/stores/transactions';
+import { ref, computed, onMounted } from 'vue'
+import { useQuasar } from 'quasar'
+import { format } from 'date-fns'
+import { useAuthStore } from 'src/stores/auth'
+import { useTeamsStore } from 'src/stores/teams'
+import { useTransactionsStore } from 'src/stores/transactions'
+import { computeSeason, getSeasonOptions } from 'src/types'
+import type { Season } from 'src/types'
+import { formatCurrency } from 'src/utils/formatters'
 
-const $q = useQuasar();
-const authStore = useAuthStore();
-const teamsStore = useTeamsStore();
-const transactionsStore = useTransactionsStore();
+const $q = useQuasar()
+const authStore = useAuthStore()
+const teamsStore = useTeamsStore()
+const transactionsStore = useTransactionsStore()
 
-const showCreateDialog = ref(false);
-const saving = ref(false);
-const statusFilter = ref('all');
+// Season
+const currentSeason = computeSeason(new Date())
+const selectedSeason = ref<Season>(currentSeason)
+const seasonOptions = computed(() => getSeasonOptions(5))
+
+const showCreateDialog = ref(false)
+const saving = ref(false)
+const statusFilter = ref('all')
 const projectForm = ref({
   name: '',
   description: '',
   budget: null as number | null,
   startDate: format(new Date(), 'yyyy-MM-dd'),
   endDate: ''
-});
+})
 
-const projects = computed(() => teamsStore.projects);
+const seasonProjects = computed(() => teamsStore.getProjectsBySeason(selectedSeason.value))
 
 const filteredProjects = computed(() => {
-  if (statusFilter.value === 'all') return projects.value;
-  return projects.value.filter(p => p.status === statusFilter.value);
-});
-
-function formatCurrency(value: number): string {
-  return new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR', minimumFractionDigits: 0 }).format(value);
-}
+  if (statusFilter.value === 'all') return seasonProjects.value
+  return seasonProjects.value.filter(p => p.status === statusFilter.value)
+})
 
 function getStatusColor(status: string): string {
-  const colors: Record<string, string> = { active: 'positive', completed: 'info', cancelled: 'negative' };
-  return colors[status] || 'grey';
+  return { active: 'positive', completed: 'info', cancelled: 'negative' }[status] || 'grey'
 }
 
 function getStatusLabel(status: string): string {
-  const labels: Record<string, string> = { active: 'Activo', completed: 'Completado', cancelled: 'Cancelado' };
-  return labels[status] || status;
+  return { active: 'Activo', completed: 'Completado', cancelled: 'Cancelado' }[status] || status
 }
 
 function getProjectIncome(projectId: string): number {
-  return transactionsStore.transactions.filter(t => t.projectId === projectId && t.type === 'income').reduce((s, t) => s + t.amount, 0);
+  return transactionsStore.transactions.filter(t => t.projectId === projectId && t.type === 'income').reduce((s, t) => s + t.amount, 0)
 }
 
 function getProjectExpenses(projectId: string): number {
-  return transactionsStore.transactions.filter(t => t.projectId === projectId && t.type === 'expense').reduce((s, t) => s + t.amount, 0);
+  return transactionsStore.transactions.filter(t => t.projectId === projectId && t.type === 'expense').reduce((s, t) => s + t.amount, 0)
 }
 
 async function createProject() {
-  if (!projectForm.value.name) return;
-  saving.value = true;
+  if (!projectForm.value.name) return
+  saving.value = true
   try {
     await teamsStore.createProject({
       name: projectForm.value.name,
@@ -168,34 +187,36 @@ async function createProject() {
       budget: projectForm.value.budget || undefined,
       startDate: new Date(projectForm.value.startDate),
       endDate: projectForm.value.endDate ? new Date(projectForm.value.endDate) : undefined,
-      status: 'active'
-    });
-    $q.notify({ type: 'positive', message: 'Proyecto creado' });
-    showCreateDialog.value = false;
-    projectForm.value = { name: '', description: '', budget: null, startDate: format(new Date(), 'yyyy-MM-dd'), endDate: '' };
+      status: 'active',
+      season: selectedSeason.value
+    })
+    $q.notify({ type: 'positive', message: 'Proyecto creado' })
+    showCreateDialog.value = false
+    projectForm.value = { name: '', description: '', budget: null, startDate: format(new Date(), 'yyyy-MM-dd'), endDate: '' }
   } finally {
-    saving.value = false;
+    saving.value = false
   }
 }
 
 onMounted(() => {
-  teamsStore.fetchProjects();
-});
+  teamsStore.fetchProjects()
+})
 </script>
 
 <style lang="scss" scoped>
-.projects-page { background: var(--color-background); }
-.projects-header { background: linear-gradient(135deg, #7B1FA2 0%, #9C27B0 100%); }
+.projects-page { background: var(--color-bg-primary); }
 .page-content { max-width: 900px; margin: 0 auto; }
 
 .project-card {
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border);
   transition: all 0.2s ease;
   &:hover { box-shadow: var(--shadow-lg); }
 
   .project-name { font-family: 'Space Grotesk', sans-serif; font-size: 1.1rem; font-weight: 600; }
-  .project-description { font-size: 0.85rem; color: var(--color-on-surface-variant); margin: 4px 0; }
+  .project-description { font-size: 0.85rem; color: var(--color-text-secondary); margin: 4px 0; }
   .project-meta { display: flex; align-items: center; gap: 12px; margin-top: 8px; }
-  .budget-info { font-size: 0.8rem; color: var(--color-on-surface-variant); }
+  .budget-info { font-size: 0.8rem; color: var(--color-text-secondary); }
   .project-amounts {
     display: flex; flex-direction: column; align-items: flex-end;
     font-family: 'Space Grotesk', sans-serif; font-size: 0.9rem; font-weight: 600;

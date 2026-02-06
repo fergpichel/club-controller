@@ -130,6 +130,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { formatCurrency } from 'src/utils/formatters'
 
 interface Props {
   title?: string
@@ -303,14 +304,6 @@ const insightText = computed(() => {
   }
 })
 
-function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat('es-ES', {
-    style: 'currency',
-    currency: 'EUR',
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0
-  }).format(amount)
-}
 </script>
 
 <style lang="scss" scoped>

@@ -498,14 +498,6 @@ export function calculateClubProfitability(
 /**
  * Format currency for display
  */
-export function formatCurrency(value: number): string {
-  return new Intl.NumberFormat('es-ES', {
-    style: 'currency',
-    currency: 'EUR',
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0
-  }).format(value)
-}
 
 /**
  * Get status color for UI

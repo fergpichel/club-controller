@@ -52,7 +52,7 @@
                   </span>
                   <span class="meta-item">
                     <q-icon name="event" size="14px" />
-                    {{ formatDate(transaction.date) }}
+                    {{ formatDateCompact(transaction.date) }}
                   </span>
                 </div>
                 <div class="created-by">
@@ -120,27 +120,15 @@
 <script setup lang="ts">
 import { computed, onMounted } from 'vue';
 import { useQuasar } from 'quasar';
-import { format } from 'date-fns';
-import { es } from 'date-fns/locale';
 import { useTransactionsStore } from 'src/stores/transactions';
 import { useCategoriesStore } from 'src/stores/categories';
+import { formatCurrency, formatDateCompact } from 'src/utils/formatters'
 
 const $q = useQuasar();
 const transactionsStore = useTransactionsStore();
 const categoriesStore = useCategoriesStore();
 
 const pendingTransactions = computed(() => transactionsStore.pendingTransactions);
-
-function formatCurrency(value: number): string {
-  return new Intl.NumberFormat('es-ES', {
-    style: 'currency',
-    currency: 'EUR'
-  }).format(value);
-}
-
-function formatDate(date: Date): string {
-  return format(new Date(date), 'd MMM', { locale: es });
-}
 
 function getCategoryColor(categoryId: string): string {
   const category = categoriesStore.getCategoryById(categoryId);
@@ -180,14 +168,20 @@ async function approveAll() {
     cancel: true
   }).onOk(async () => {
     $q.loading.show();
-    for (const transaction of pendingTransactions.value) {
-      await transactionsStore.approveTransaction(transaction.id);
-    }
+    const ids = pendingTransactions.value.map(t => t.id);
+    const success = await transactionsStore.batchApproveTransactions(ids);
     $q.loading.hide();
-    $q.notify({
-      type: 'positive',
-      message: 'Todas las transacciones aprobadas'
-    });
+    if (success) {
+      $q.notify({
+        type: 'positive',
+        message: 'Todas las transacciones aprobadas'
+      });
+    } else {
+      $q.notify({
+        type: 'negative',
+        message: 'Error al aprobar las transacciones'
+      });
+    }
   });
 }
 

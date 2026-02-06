@@ -67,6 +67,7 @@ import { useRoute } from 'vue-router';
 import { useTeamsStore } from 'src/stores/teams';
 import { useTransactionsStore } from 'src/stores/transactions';
 import TransactionItem from 'src/components/TransactionItem.vue';
+import { formatCurrency } from 'src/utils/formatters';
 
 const props = defineProps<{ id?: string }>();
 const route = useRoute();
@@ -80,10 +81,6 @@ const totalIncome = computed(() => transactions.value.filter(t => t.type === 'in
 const totalExpenses = computed(() => transactions.value.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0));
 const balance = computed(() => totalIncome.value - totalExpenses.value);
 const budgetUsedPercent = computed(() => project.value?.budget ? Math.round((totalExpenses.value / project.value.budget) * 100) : 0);
-
-function formatCurrency(value: number): string {
-  return new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR', minimumFractionDigits: 0 }).format(value);
-}
 
 onMounted(() => {
   if (!project.value) teamsStore.fetchProjects();

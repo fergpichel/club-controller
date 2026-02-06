@@ -127,7 +127,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed } from 'vue'
 import { Line } from 'vue-chartjs'
 import {
   Chart as ChartJS,
@@ -146,7 +146,9 @@ import annotationPlugin from 'chartjs-plugin-annotation'
 import { format, addDays, startOfDay, isSameDay } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { useTransactionsStore } from 'src/stores/transactions'
-import { ANNUAL_BUDGET } from 'src/mocks/data'
+import { useBudgetStore } from 'src/stores/budget'
+import { useCategoriesStore } from 'src/stores/categories'
+import { formatCurrency } from 'src/utils/formatters'
 
 ChartJS.register(
   CategoryScale,
@@ -161,6 +163,8 @@ ChartJS.register(
 )
 
 const transactionsStore = useTransactionsStore()
+const budgetStore = useBudgetStore()
+const categoriesStore = useCategoriesStore()
 
 // State
 const selectedPeriod = ref(90)
@@ -179,14 +183,45 @@ const periodLabel = computed(() => {
   return period?.label || `${selectedPeriod.value} días`
 })
 
-// Recurring transactions (known fixed costs)
-const recurringTransactions = [
-  { name: 'Nóminas', dayOfMonth: 28, amount: ANNUAL_BUDGET.expenses.salarios / 12, type: 'expense', categoryName: 'Personal' },
-  { name: 'Seguridad Social', dayOfMonth: 28, amount: ANNUAL_BUDGET.expenses.seguridadSocial / 12, type: 'expense', categoryName: 'Personal' },
-  { name: 'Alquiler instalaciones', dayOfMonth: 1, amount: ANNUAL_BUDGET.expenses.alquilerInstalaciones / 12, type: 'expense', categoryName: 'Instalaciones' },
-  { name: 'Cuotas socios (estimado)', dayOfMonth: 5, amount: ANNUAL_BUDGET.income.cuotas / 10, type: 'income', categoryName: 'Cuotas' },
-  { name: 'Arbitrajes', dayOfMonth: 15, amount: ANNUAL_BUDGET.expenses.arbitrajes / 10, type: 'expense', categoryName: 'Competición' },
-]
+// Recurring transactions derived from the real budget (monthly distribution)
+const recurringTransactions = computed(() => {
+  const budget = budgetStore.currentBudget
+  if (!budget) return []
+
+  const items: { name: string; dayOfMonth: number; amount: number; type: string; categoryName: string }[] = []
+  let dayCounter = 1
+
+  // Income allocations → monthly entries (day 5 each)
+  for (const alloc of budget.incomeAllocations) {
+    const cat = categoriesStore.getCategoryById(alloc.categoryId)
+    if (alloc.amount > 0) {
+      items.push({
+        name: cat?.name || 'Ingreso',
+        dayOfMonth: 5,
+        amount: Math.round((alloc.amount / 12) * 100) / 100,
+        type: 'income',
+        categoryName: cat?.name || 'Ingreso'
+      })
+    }
+  }
+
+  // Expense allocations → monthly entries (spread across the month)
+  for (const alloc of budget.expenseAllocations) {
+    const cat = categoriesStore.getCategoryById(alloc.categoryId)
+    if (alloc.amount > 0) {
+      items.push({
+        name: cat?.name || 'Gasto',
+        dayOfMonth: Math.min(28, dayCounter),
+        amount: Math.round((alloc.amount / 12) * 100) / 100,
+        type: 'expense',
+        categoryName: cat?.name || 'Gasto'
+      })
+      dayCounter = (dayCounter + 7) % 28 || 1
+    }
+  }
+
+  return items
+})
 
 // Calculate current balance from transactions
 const currentBalance = computed(() => {
@@ -221,7 +256,7 @@ const cashFlowProjection = computed(() => {
 
     // Add recurring transactions
     if (showRecurring.value) {
-      recurringTransactions.forEach(recurring => {
+      recurringTransactions.value.forEach(recurring => {
         if (recurring.dayOfMonth === dayOfMonth) {
           if (recurring.type === 'income') {
             dailyChange += recurring.amount
@@ -305,7 +340,7 @@ const upcomingEvents = computed(() => {
   const events: { id: string; name: string; dayOfMonth: number; monthName: string; amount: number; type: string; categoryName: string }[] = []
   
   for (let monthOffset = 0; monthOffset < 3; monthOffset++) {
-    recurringTransactions.forEach((recurring, index) => {
+    recurringTransactions.value.forEach((recurring, index) => {
       const eventDate = new Date(today.getFullYear(), today.getMonth() + monthOffset, recurring.dayOfMonth)
       if (eventDate > today) {
         events.push({
@@ -468,18 +503,7 @@ const chartOptions = computed(() => ({
   }
 }))
 
-function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat('es-ES', {
-    style: 'currency',
-    currency: 'EUR',
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0
-  }).format(amount)
-}
-
-onMounted(async () => {
-  await transactionsStore.fetchTransactions({})
-})
+// Data is loaded by parent page — no independent fetch needed
 </script>
 
 <style lang="scss" scoped>

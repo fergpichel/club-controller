@@ -13,16 +13,17 @@ import {
 } from 'firebase/firestore'
 import { db } from 'src/boot/firebase'
 import { useAuthStore } from './auth'
-import { isMockEnabled } from 'src/mocks'
-import { statisticsApi, monthClosingsApi } from 'src/services/api'
+import { useCategoriesStore } from './categories'
 import type {
   PeriodStats,
   CategoryStats,
   TrendData,
   MonthClosing,
   Forecast,
-  TransactionType
+  TransactionType,
+  Season
 } from 'src/types'
+import { getSeasonDates } from 'src/types'
 import {
   startOfMonth,
   endOfMonth,
@@ -33,6 +34,7 @@ import {
   format
 } from 'date-fns'
 import { es } from 'date-fns/locale'
+import { logger } from 'src/utils/logger'
 
 export const useStatisticsStore = defineStore('statistics', () => {
   // State
@@ -65,24 +67,17 @@ export const useStatisticsStore = defineStore('statistics', () => {
   // Actions
   async function fetchPeriodStats(startDate: Date, endDate: Date): Promise<PeriodStats> {
     const authStore = useAuthStore()
-    if (!authStore.clubId && !isMockEnabled()) {
+    if (!authStore.clubId) {
       return getEmptyStats()
     }
 
     try {
-      if (isMockEnabled()) {
-        // Mock mode uses monthly stats
-        const year = startDate.getFullYear()
-        const month = startDate.getMonth() + 1
-        return await statisticsApi.getMonthlyStats(year, month)
-      }
-
       const q = query(
         collection(db, 'transactions'),
         where('clubId', '==', authStore.clubId),
         where('date', '>=', Timestamp.fromDate(startDate)),
         where('date', '<=', Timestamp.fromDate(endDate)),
-        where('status', '==', 'approved')
+        where('status', 'in', ['approved', 'pending', 'paid'])
       )
 
       const snapshot = await getDocs(q)
@@ -112,7 +107,7 @@ export const useStatisticsStore = defineStore('statistics', () => {
         largestExpense: Math.max(...expenses.map(t => t.amount), 0)
       }
     } catch (e) {
-      console.error('Error fetching period stats:', e)
+      logger.error('Error fetching period stats:', e)
       return getEmptyStats()
     }
   }
@@ -122,17 +117,12 @@ export const useStatisticsStore = defineStore('statistics', () => {
     error.value = null
 
     try {
-      if (isMockEnabled()) {
-        monthlyStats.value = await statisticsApi.getMonthlyStats(year, month)
-        return monthlyStats.value
-      }
-
       const start = startOfMonth(new Date(year, month - 1))
       const end = endOfMonth(new Date(year, month - 1))
       monthlyStats.value = await fetchPeriodStats(start, end)
       return monthlyStats.value
     } catch (e) {
-      console.error('Error fetching monthly stats:', e)
+      logger.error('Error fetching monthly stats:', e)
       error.value = 'Error al cargar estadísticas mensuales'
       return getEmptyStats()
     } finally {
@@ -150,7 +140,7 @@ export const useStatisticsStore = defineStore('statistics', () => {
       yearlyStats.value = await fetchPeriodStats(start, end)
       return yearlyStats.value
     } catch (e) {
-      console.error('Error fetching yearly stats:', e)
+      logger.error('Error fetching yearly stats:', e)
       error.value = 'Error al cargar estadísticas anuales'
       return getEmptyStats()
     } finally {
@@ -158,68 +148,109 @@ export const useStatisticsStore = defineStore('statistics', () => {
     }
   }
 
-  async function fetchCategoryStats(startDate: Date, endDate: Date, type: TransactionType) {
+  /**
+   * Fetch category stats for a date range.
+   * Uses the existing (clubId, status, date) composite index and filters by type client-side.
+   * Category names are resolved from the categories store first, then from the transaction
+   * document as fallback (in case categories were re-seeded with new IDs).
+   * Subcategories are rolled up into their parent category for the summary.
+   */
+  async function fetchCategoryStats(startDate: Date, endDate: Date, type?: TransactionType) {
     loading.value = true
     error.value = null
 
     try {
-      let result: CategoryStats[] = []
-      
-      if (isMockEnabled()) {
-        result = await statisticsApi.getCategoryStats(startDate, endDate, type)
-      } else {
-        const authStore = useAuthStore()
-        if (!authStore.clubId) return []
+      const authStore = useAuthStore()
+      if (!authStore.clubId) return []
 
-        const q = query(
-          collection(db, 'transactions'),
-          where('clubId', '==', authStore.clubId),
-          where('type', '==', type),
-          where('date', '>=', Timestamp.fromDate(startDate)),
-          where('date', '<=', Timestamp.fromDate(endDate)),
-          where('status', '==', 'approved')
-        )
+      const categoriesStore = useCategoriesStore()
+      // Ensure categories are loaded so we can resolve names
+      if (categoriesStore.categories.length === 0) {
+        await categoriesStore.fetchCategories()
+      }
 
-        const snapshot = await getDocs(q)
-        const byCategory: Record<string, { total: number; count: number; name: string }> = {}
+      // Single query using the existing composite index (clubId + status + date)
+      // Include all non-rejected statuses to match what the rest of the app shows
+      const q = query(
+        collection(db, 'transactions'),
+        where('clubId', '==', authStore.clubId),
+        where('date', '>=', Timestamp.fromDate(startDate)),
+        where('date', '<=', Timestamp.fromDate(endDate)),
+        where('status', 'in', ['approved', 'pending', 'paid'])
+      )
 
-        snapshot.forEach(doc => {
-          const data = doc.data()
-          const catId = data.categoryId || 'uncategorized'
-          const catName = data.categoryName || 'Sin categoría'
+      const snapshot = await getDocs(q)
 
-          if (!byCategory[catId]) {
-            byCategory[catId] = { total: 0, count: 0, name: catName }
-          }
+      // Group by type → parent category (roll subcategories up)
+      // Track both the resolved name and the fallback name from the transaction
+      interface CatBucket { total: number; count: number; fallbackName: string }
+      const byTypeCategory: Record<string, Record<string, CatBucket>> = {
+        income: {},
+        expense: {}
+      }
 
-          byCategory[catId].total += data.amount || 0
-          byCategory[catId].count++
-        })
+      snapshot.forEach(docSnap => {
+        const data = docSnap.data()
+        const txType = data.type as string
+        if (txType !== 'income' && txType !== 'expense') return
 
-        const total = Object.values(byCategory).reduce((sum, cat) => sum + cat.total, 0)
+        // If a specific type was requested, skip the other
+        if (type && txType !== type) return
 
-        result = Object.entries(byCategory)
-          .map(([categoryId, data]) => ({
-            categoryId,
-            categoryName: data.name,
-            total: data.total,
-            count: data.count,
-            percentage: total > 0 ? (data.total / total) * 100 : 0
-          }))
+        let catId = data.categoryId || 'uncategorized'
+        const txCategoryName = data.categoryName || ''
+
+        // Try to resolve from categories store and roll subcategories up
+        const category = categoriesStore.getCategoryById(catId)
+        if (category?.parentId) {
+          catId = category.parentId
+        }
+
+        if (!byTypeCategory[txType][catId]) {
+          byTypeCategory[txType][catId] = { total: 0, count: 0, fallbackName: txCategoryName }
+        }
+
+        byTypeCategory[txType][catId].total += data.amount || 0
+        byTypeCategory[txType][catId].count++
+      })
+
+      // Build sorted results — resolve names from the categories store,
+      // fall back to the name stored on the transaction document
+      function buildResult(bucket: Record<string, CatBucket>): CategoryStats[] {
+        const total = Object.values(bucket).reduce((sum, cat) => sum + cat.total, 0)
+        return Object.entries(bucket)
+          .map(([categoryId, data]) => {
+            const cat = categoriesStore.getCategoryById(categoryId)
+            return {
+              categoryId,
+              categoryName: cat?.name || data.fallbackName || 'Sin categorizar',
+              total: data.total,
+              count: data.count,
+              percentage: total > 0 ? (data.total / total) * 100 : 0
+            }
+          })
           .sort((a, b) => b.total - a.total)
       }
 
-      // Store in the appropriate ref based on type
-      if (type === 'income') {
-        incomeCategoryStats.value = result
-      } else {
-        expenseCategoryStats.value = result
+      if (!type || type === 'income') {
+        incomeCategoryStats.value = buildResult(byTypeCategory.income)
       }
-      categoryStats.value = result
-      
-      return result
+      if (!type || type === 'expense') {
+        expenseCategoryStats.value = buildResult(byTypeCategory.expense)
+      }
+
+      // categoryStats = whatever was last requested (backward compat)
+      if (type === 'income') {
+        categoryStats.value = incomeCategoryStats.value
+      } else if (type === 'expense') {
+        categoryStats.value = expenseCategoryStats.value
+      } else {
+        categoryStats.value = [...incomeCategoryStats.value, ...expenseCategoryStats.value]
+      }
+
+      return categoryStats.value
     } catch (e) {
-      console.error('Error fetching category stats:', e)
+      logger.error('Error fetching category stats:', e)
       error.value = 'Error al cargar estadísticas por categoría'
       return []
     } finally {
@@ -228,10 +259,8 @@ export const useStatisticsStore = defineStore('statistics', () => {
   }
 
   async function fetchAllCategoryStats(startDate: Date, endDate: Date) {
-    await Promise.all([
-      fetchCategoryStats(startDate, endDate, 'income'),
-      fetchCategoryStats(startDate, endDate, 'expense')
-    ])
+    // Single query fetches both income and expense categories at once
+    await fetchCategoryStats(startDate, endDate)
   }
 
   async function fetchTrendData(months: number = 12) {
@@ -239,11 +268,6 @@ export const useStatisticsStore = defineStore('statistics', () => {
     error.value = null
 
     try {
-      if (isMockEnabled()) {
-        trendData.value = await statisticsApi.getTrendData(months)
-        return trendData.value
-      }
-
       const authStore = useAuthStore()
       if (!authStore.clubId) return []
 
@@ -256,7 +280,7 @@ export const useStatisticsStore = defineStore('statistics', () => {
         where('clubId', '==', authStore.clubId),
         where('date', '>=', Timestamp.fromDate(startDate)),
         where('date', '<=', Timestamp.fromDate(endDate)),
-        where('status', '==', 'approved')
+        where('status', 'in', ['approved', 'pending', 'paid'])
       )
 
       const snapshot = await getDocs(q)
@@ -295,7 +319,7 @@ export const useStatisticsStore = defineStore('statistics', () => {
       trendData.value = Object.values(monthData)
       return trendData.value
     } catch (e) {
-      console.error('Error fetching trend data:', e)
+      logger.error('Error fetching trend data:', e)
       error.value = 'Error al cargar tendencias'
       return []
     } finally {
@@ -303,16 +327,126 @@ export const useStatisticsStore = defineStore('statistics', () => {
     }
   }
 
+  /**
+   * Fetch trend data for a specific season (July to June)
+   * @param season - Season string like "2024/25"
+   */
+  async function fetchSeasonTrendData(season: string) {
+    loading.value = true
+    error.value = null
+
+    try {
+      // Parse season to get start and end years
+      const [startYearStr] = season.split('/')
+      const startYear = parseInt(startYearStr)
+      
+      // Season runs from July 1 of startYear to June 30 of startYear+1
+      const seasonStart = new Date(startYear, 6, 1) // July 1
+      const seasonEnd = new Date(startYear + 1, 5, 30, 23, 59, 59) // June 30
+
+      const authStore = useAuthStore()
+      if (!authStore.clubId) {
+        trendData.value = []
+        return []
+      }
+
+      // Generate month labels in season order (Jul, Aug, ..., Jun)
+      const seasonMonths: Date[] = []
+      for (let m = 6; m < 12; m++) { // Jul-Dec of startYear
+        seasonMonths.push(new Date(startYear, m, 1))
+      }
+      for (let m = 0; m < 6; m++) { // Jan-Jun of startYear+1
+        seasonMonths.push(new Date(startYear + 1, m, 1))
+      }
+
+      const monthData: Record<string, TrendData> = {}
+      seasonMonths.forEach(date => {
+        const key = format(date, 'yyyy-MM')
+        monthData[key] = {
+          label: format(date, 'MMM', { locale: es }),
+          income: 0,
+          expenses: 0,
+          balance: 0
+        }
+      })
+
+      const q = query(
+        collection(db, 'transactions'),
+        where('clubId', '==', authStore.clubId),
+        where('date', '>=', Timestamp.fromDate(seasonStart)),
+        where('date', '<=', Timestamp.fromDate(seasonEnd)),
+        where('status', 'in', ['approved', 'pending', 'paid'])
+      )
+
+      const snapshot = await getDocs(q)
+
+      snapshot.forEach(doc => {
+        const data = doc.data()
+        const date = data.date?.toDate() || new Date()
+        const key = format(date, 'yyyy-MM')
+
+        if (monthData[key]) {
+          if (data.type === 'income') {
+            monthData[key].income += data.amount || 0
+          } else {
+            monthData[key].expenses += data.amount || 0
+          }
+        }
+      })
+
+      // Calculate running balance
+      let runningBalance = 0
+      Object.values(monthData).forEach(month => {
+        runningBalance += month.income - month.expenses
+        month.balance = runningBalance
+      })
+
+      trendData.value = Object.values(monthData)
+      return trendData.value
+    } catch (e) {
+      logger.error('Error fetching season trend data:', e)
+      error.value = 'Error al cargar datos de temporada'
+      return []
+    } finally {
+      loading.value = false
+    }
+  }
+
+  /**
+   * Fetch stats for a specific season
+   */
+  async function fetchSeasonStats(season: string): Promise<PeriodStats> {
+    const [startYearStr] = season.split('/')
+    const startYear = parseInt(startYearStr)
+    const seasonStart = new Date(startYear, 6, 1) // July 1
+    const seasonEnd = new Date(startYear + 1, 5, 30, 23, 59, 59) // June 30
+    
+    const stats = await fetchPeriodStats(seasonStart, seasonEnd)
+    // Also update yearlyStats so the UI can use it
+    yearlyStats.value = stats
+    return stats
+  }
+
+  /**
+   * Fetch category stats for a specific season
+   */
+  async function fetchSeasonCategoryStats(season: string, type?: TransactionType) {
+    const [startYearStr] = season.split('/')
+    const startYear = parseInt(startYearStr)
+    const seasonStart = new Date(startYear, 6, 1)
+    const seasonEnd = new Date(startYear + 1, 5, 30, 23, 59, 59)
+    
+    if (type) {
+      return fetchCategoryStats(seasonStart, seasonEnd, type)
+    }
+    return fetchAllCategoryStats(seasonStart, seasonEnd)
+  }
+
   async function fetchMonthClosings() {
     loading.value = true
     error.value = null
 
     try {
-      if (isMockEnabled()) {
-        monthClosings.value = await monthClosingsApi.getAll()
-        return monthClosings.value
-      }
-
       const authStore = useAuthStore()
       if (!authStore.clubId) return []
 
@@ -333,7 +467,7 @@ export const useStatisticsStore = defineStore('statistics', () => {
 
       return monthClosings.value
     } catch (e) {
-      console.error('Error fetching month closings:', e)
+      logger.error('Error fetching month closings:', e)
       error.value = 'Error al cargar cierres de mes'
       return []
     } finally {
@@ -344,17 +478,15 @@ export const useStatisticsStore = defineStore('statistics', () => {
   async function closeMonth(year: number, month: number, notes?: string) {
     const authStore = useAuthStore()
     if (!authStore.user) return null
+    if (!authStore.canDoClosings) {
+      error.value = 'Sin permisos para cerrar meses'
+      return null
+    }
 
     loading.value = true
     error.value = null
 
     try {
-      if (isMockEnabled()) {
-        const closing = await monthClosingsApi.close(year, month, authStore.user.uid)
-        monthClosings.value = [...monthClosings.value, closing]
-        return closing
-      }
-
       if (!authStore.clubId) return null
 
       const stats = await fetchMonthlyStats(year, month)
@@ -391,7 +523,7 @@ export const useStatisticsStore = defineStore('statistics', () => {
       monthClosings.value = [...monthClosings.value, newClosing]
       return newClosing
     } catch (e) {
-      console.error('Error closing month:', e)
+      logger.error('Error closing month:', e)
       error.value = 'Error al cerrar mes'
       return null
     } finally {
@@ -399,37 +531,31 @@ export const useStatisticsStore = defineStore('statistics', () => {
     }
   }
 
-  async function fetchForecasts(year: number) {
+  async function fetchForecasts(season: Season) {
     loading.value = true
     error.value = null
 
     try {
       const authStore = useAuthStore()
-      if (!authStore.clubId && !isMockEnabled()) return []
-
-      if (isMockEnabled()) {
-        // Generate mock forecasts based on historical data
-        forecasts.value = []
-        return forecasts.value
-      }
+      if (!authStore.clubId) return []
 
       const q = query(
         collection(db, 'forecasts'),
         where('clubId', '==', authStore.clubId),
-        where('year', '==', year)
+        where('season', '==', season)
       )
 
       const snapshot = await getDocs(q)
-      forecasts.value = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data(),
-        createdAt: doc.data().createdAt?.toDate() || new Date(),
-        updatedAt: doc.data().updatedAt?.toDate() || new Date()
-      })) as Forecast[]
+      forecasts.value = snapshot.docs.map(d => ({
+        id: d.id,
+        ...d.data(),
+        createdAt: d.data().createdAt?.toDate() || new Date(),
+        updatedAt: d.data().updatedAt?.toDate() || new Date()
+      })).filter(f => !(f as Record<string, unknown>)._deleted) as Forecast[]
 
       return forecasts.value
     } catch (e) {
-      console.error('Error fetching forecasts:', e)
+      logger.error('Error fetching forecasts:', e)
       error.value = 'Error al cargar previsiones'
       return []
     } finally {
@@ -439,7 +565,7 @@ export const useStatisticsStore = defineStore('statistics', () => {
 
   async function createForecast(data: Omit<Forecast, 'id' | 'createdAt' | 'updatedAt'>) {
     const authStore = useAuthStore()
-    if (!authStore.clubId && !isMockEnabled()) return null
+    if (!authStore.clubId) return null
 
     loading.value = true
     error.value = null
@@ -447,21 +573,9 @@ export const useStatisticsStore = defineStore('statistics', () => {
     try {
       const forecastData = {
         ...data,
-        clubId: authStore.clubId || 'mock',
+        clubId: authStore.clubId,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp()
-      }
-
-      if (isMockEnabled()) {
-        const newForecast: Forecast = {
-          ...data,
-          id: `forecast_${Date.now()}`,
-          clubId: 'mock',
-          createdAt: new Date(),
-          updatedAt: new Date()
-        }
-        forecasts.value = [...forecasts.value, newForecast]
-        return newForecast
       }
 
       const docRef = await addDoc(collection(db, 'forecasts'), forecastData)
@@ -477,7 +591,7 @@ export const useStatisticsStore = defineStore('statistics', () => {
       forecasts.value = [...forecasts.value, newForecast]
       return newForecast
     } catch (e) {
-      console.error('Error creating forecast:', e)
+      logger.error('Error creating forecast:', e)
       error.value = 'Error al crear previsión'
       return null
     } finally {
@@ -490,14 +604,6 @@ export const useStatisticsStore = defineStore('statistics', () => {
     error.value = null
 
     try {
-      if (isMockEnabled()) {
-        const index = forecasts.value.findIndex(f => f.id === id)
-        if (index !== -1) {
-          forecasts.value[index] = { ...forecasts.value[index], ...data, updatedAt: new Date() }
-        }
-        return true
-      }
-
       await updateDoc(doc(db, 'forecasts', id), {
         ...data,
         updatedAt: serverTimestamp()
@@ -510,9 +616,161 @@ export const useStatisticsStore = defineStore('statistics', () => {
 
       return true
     } catch (e) {
-      console.error('Error updating forecast:', e)
+      logger.error('Error updating forecast:', e)
       error.value = 'Error al actualizar previsión'
       return false
+    } finally {
+      loading.value = false
+    }
+  }
+
+  /**
+   * Generate forecasts for a season based on historical transaction data.
+   * Averages monthly amounts per category from previous seasons.
+   */
+  async function generateHistoricalForecasts(season: Season): Promise<Forecast[]> {
+    const authStore = useAuthStore()
+    if (!authStore.clubId) return []
+
+    loading.value = true
+    error.value = null
+
+    try {
+      // Get past seasons data (up to 3 previous seasons)
+      const targetDates = getSeasonDates(season)
+      const pastSeasons: Season[] = []
+      const startYear = parseInt(season.split('/')[0])
+      for (let i = 1; i <= 3; i++) {
+        const y = startYear - i
+        if (y >= 2020) {
+          pastSeasons.push(`${y}/${String(y + 1).slice(-2)}`)
+        }
+      }
+
+      if (pastSeasons.length === 0) {
+        error.value = 'No hay temporadas anteriores para generar previsiones'
+        return []
+      }
+
+      // Fetch all transactions from past seasons
+      const allTransactions: { type: string; amount: number; categoryId: string; date: Date; season: string }[] = []
+
+      for (const pastSeason of pastSeasons) {
+        const dates = getSeasonDates(pastSeason)
+        const q = query(
+          collection(db, 'transactions'),
+          where('clubId', '==', authStore.clubId),
+          where('date', '>=', Timestamp.fromDate(dates.start)),
+          where('date', '<=', Timestamp.fromDate(dates.end)),
+          where('status', 'in', ['approved', 'pending', 'paid'])
+        )
+        const snapshot = await getDocs(q)
+        snapshot.docs.forEach(d => {
+          const data = d.data()
+          allTransactions.push({
+            type: data.type,
+            amount: data.amount || 0,
+            categoryId: data.categoryId || '',
+            date: data.date?.toDate ? data.date.toDate() : new Date(data.date),
+            season: pastSeason
+          })
+        })
+      }
+
+      if (allTransactions.length === 0) {
+        error.value = 'No hay datos históricos para generar previsiones'
+        return []
+      }
+
+      // Group by categoryId + month (1-12) + type
+      // Then average across seasons
+      const groupKey = (categoryId: string, month: number, type: string) => `${categoryId}|${month}|${type}`
+      const groupTotals: Record<string, { total: number; seasons: Set<string> }> = {}
+
+      allTransactions.forEach(t => {
+        const month = t.date.getMonth() + 1 // 1-12
+        const key = groupKey(t.categoryId, month, t.type)
+        if (!groupTotals[key]) {
+          groupTotals[key] = { total: 0, seasons: new Set() }
+        }
+        groupTotals[key].total += t.amount
+        groupTotals[key].seasons.add(t.season)
+      })
+
+      // Build forecasts: average per season for each category/month
+      const newForecasts: Forecast[] = []
+      const useCategoriesStore = (await import('./categories')).useCategoriesStore
+      const categoriesStore = useCategoriesStore()
+
+      // Season months: July(7) through June(6)
+      const seasonMonths = [7, 8, 9, 10, 11, 12, 1, 2, 3, 4, 5, 6]
+
+      for (const [key, data] of Object.entries(groupTotals)) {
+        const [categoryId, monthStr, type] = key.split('|')
+        const month = parseInt(monthStr)
+
+        // Only include months that belong to the season
+        if (!seasonMonths.includes(month)) continue
+
+        const numSeasons = data.seasons.size
+        const avgAmount = Math.round((data.total / numSeasons) * 100) / 100
+
+        // Determine the year for this month in the target season
+        const year = month >= 7 ? targetDates.start.getFullYear() : targetDates.end.getFullYear()
+
+        const category = categoriesStore.getCategoryById(categoryId)
+
+        const forecast: Omit<Forecast, 'id' | 'createdAt' | 'updatedAt'> = {
+          clubId: authStore.clubId || '',
+          season,
+          year,
+          month,
+          categoryId,
+          categoryName: category?.name || 'Sin categoría',
+          type: type as TransactionType,
+          amount: avgAmount,
+          source: 'historical',
+          notes: `Media de ${numSeasons} temporada(s): ${Array.from(data.seasons).join(', ')}`
+        }
+
+        newForecasts.push(forecast as Forecast)
+      }
+
+      // Delete existing historical forecasts for this season
+      const existingQ = query(
+        collection(db, 'forecasts'),
+        where('clubId', '==', authStore.clubId),
+        where('season', '==', season),
+        where('source', '==', 'historical')
+      )
+      const existingSnapshot = await getDocs(existingQ)
+      const deletePromises = existingSnapshot.docs.map(d =>
+        updateDoc(doc(db, 'forecasts', d.id), { _deleted: true })
+      )
+      await Promise.all(deletePromises)
+
+      // Create new forecasts
+      const createdForecasts: Forecast[] = []
+      for (const f of newForecasts) {
+        const docRef = await addDoc(collection(db, 'forecasts'), {
+          ...f,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp()
+        })
+        createdForecasts.push({
+          ...f,
+          id: docRef.id,
+          createdAt: new Date(),
+          updatedAt: new Date()
+        })
+      }
+
+      forecasts.value = createdForecasts
+      return createdForecasts
+    } catch (e) {
+      logger.error('Error generating forecasts:', e)
+      error.value = 'Error al generar previsiones'
+      return []
     } finally {
       loading.value = false
     }
@@ -547,11 +805,15 @@ export const useStatisticsStore = defineStore('statistics', () => {
     fetchCategoryStats,
     fetchAllCategoryStats,
     fetchTrendData,
+    fetchSeasonTrendData,
+    fetchSeasonStats,
+    fetchSeasonCategoryStats,
     fetchMonthClosings,
     closeMonth,
     fetchForecasts,
     createForecast,
     updateForecast,
+    generateHistoricalForecasts,
     getMonthClosingStatus,
     isMonthClosed
   }

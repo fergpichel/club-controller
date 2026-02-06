@@ -6,7 +6,7 @@
         <q-icon name="event" size="32px" color="white" class="q-ml-md" />
         <div class="q-ml-md">
           <h1>{{ event.name }}</h1>
-          <p class="header-subtitle">{{ formatDate(event.date) }} {{ event.location ? `· ${event.location}` : '' }}</p>
+          <p class="header-subtitle">{{ formatDateLong(event.date) }} {{ event.location ? `· ${event.location}` : '' }}</p>
         </div>
       </div>
     </div>
@@ -33,11 +33,10 @@
 <script setup lang="ts">
 import { computed, onMounted } from 'vue';
 import { useRoute } from 'vue-router';
-import { format } from 'date-fns';
-import { es } from 'date-fns/locale';
 import { useTeamsStore } from 'src/stores/teams';
 import { useTransactionsStore } from 'src/stores/transactions';
 import TransactionItem from 'src/components/TransactionItem.vue';
+import { formatCurrency, formatDateLong } from 'src/utils/formatters'
 
 const props = defineProps<{ id?: string }>();
 const route = useRoute();
@@ -50,9 +49,6 @@ const transactions = computed(() => transactionsStore.transactions.filter(t => t
 const totalIncome = computed(() => transactions.value.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0));
 const totalExpenses = computed(() => transactions.value.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0));
 const balance = computed(() => totalIncome.value - totalExpenses.value);
-
-function formatCurrency(value: number) { return new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR', minimumFractionDigits: 0 }).format(value); }
-function formatDate(date: Date) { return format(new Date(date), "d 'de' MMMM 'de' yyyy", { locale: es }); }
 
 onMounted(() => { if (!event.value) teamsStore.fetchEvents(); transactionsStore.fetchTransactions({ eventId: eventId.value }); });
 </script>

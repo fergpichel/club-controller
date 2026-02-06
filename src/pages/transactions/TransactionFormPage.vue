@@ -60,7 +60,8 @@
               outlined
               emit-value
               map-options
-              :rules="[val => !!val || 'Categoría requerida']"
+              clearable
+              hint="Dejar vacío para 'Sin categorizar'"
               class="q-mb-md"
               @update:model-value="onParentCategoryChange"
             >
@@ -135,11 +136,99 @@
               outlined
               emit-value
               map-options
+              class="q-mb-md"
             >
               <template #prepend>
                 <q-icon name="payment" />
               </template>
             </q-select>
+
+            <q-select
+              v-model="season"
+              :options="seasonOptions"
+              label="Temporada"
+              outlined
+              emit-value
+              map-options
+              clearable
+              hint="Auto-calculada desde la fecha. Solo cambiar en excepciones."
+              class="q-mb-md"
+            >
+              <template #prepend>
+                <q-icon name="date_range" />
+              </template>
+            </q-select>
+
+            <q-input
+              v-model="paidDate"
+              label="Fecha de cobro / pago real"
+              outlined
+              hint="Dejar vacío si coincide con la fecha de la transacción"
+              clearable
+            >
+              <template #prepend>
+                <q-icon name="event_available" />
+              </template>
+              <template #append>
+                <q-icon name="edit_calendar" class="cursor-pointer">
+                  <q-popup-proxy cover transition-show="scale" transition-hide="scale">
+                    <q-date v-model="paidDate" mask="YYYY-MM-DD">
+                      <div class="row items-center justify-end">
+                        <q-btn v-close-popup label="Cerrar" color="primary" flat />
+                      </div>
+                    </q-date>
+                  </q-popup-proxy>
+                </q-icon>
+              </template>
+            </q-input>
+          </q-card-section>
+        </q-card>
+
+        <!-- Tax breakdown (optional) -->
+        <q-card class="q-mb-md">
+          <q-card-section>
+            <div class="section-title q-mb-sm">Desglose fiscal (opcional)</div>
+            <p class="text-caption text-grey q-mb-md">Si aplica IVA, el importe total se calculará automáticamente</p>
+
+            <div class="row q-col-gutter-md">
+              <div class="col-6">
+                <q-input
+                  v-model.number="baseAmount"
+                  label="Base imponible"
+                  outlined
+                  type="number"
+                  step="0.01"
+                  prefix="€"
+                  @update:model-value="calculateFromBase"
+                />
+              </div>
+              <div class="col-6">
+                <q-select
+                  v-model="taxRate"
+                  :options="taxRateOptions"
+                  label="IVA"
+                  outlined
+                  emit-value
+                  map-options
+                  @update:model-value="calculateFromBase"
+                />
+              </div>
+            </div>
+
+            <div v-if="baseAmount && taxRate" class="tax-summary q-mt-md">
+              <div class="tax-row">
+                <span>Base:</span>
+                <span>{{ formatCurrency(baseAmount) }}</span>
+              </div>
+              <div class="tax-row">
+                <span>IVA ({{ taxRate }}%):</span>
+                <span>{{ formatCurrency(taxAmount) }}</span>
+              </div>
+              <div class="tax-row total">
+                <span>Total:</span>
+                <span>{{ formatCurrency((baseAmount || 0) + taxAmount) }}</span>
+              </div>
+            </div>
           </q-card-section>
         </q-card>
 
@@ -186,9 +275,41 @@
               emit-value
               map-options
               clearable
+              class="q-mb-md"
             >
               <template #prepend>
                 <q-icon name="event" />
+              </template>
+            </q-select>
+
+            <q-select
+              v-if="transactionType === 'income'"
+              v-model="sponsorId"
+              :options="sponsorOptions"
+              label="Patrocinador"
+              outlined
+              emit-value
+              map-options
+              clearable
+              class="q-mb-md"
+            >
+              <template #prepend>
+                <q-icon name="handshake" />
+              </template>
+            </q-select>
+
+            <q-select
+              v-if="transactionType === 'expense'"
+              v-model="supplierId"
+              :options="supplierOptions"
+              label="Proveedor"
+              outlined
+              emit-value
+              map-options
+              clearable
+            >
+              <template #prepend>
+                <q-icon name="local_shipping" />
               </template>
             </q-select>
           </q-card-section>
@@ -297,7 +418,11 @@ import { format } from 'date-fns';
 import { useTransactionsStore } from 'src/stores/transactions';
 import { useCategoriesStore } from 'src/stores/categories';
 import { useTeamsStore } from 'src/stores/teams';
-import type { PaymentMethod, Attachment } from 'src/types';
+import { useCatalogsStore } from 'src/stores/catalogs';
+import type { PaymentMethod, Attachment, Season } from 'src/types';
+import { getSeasonOptions } from 'src/types';
+import { formatCurrency } from 'src/utils/formatters'
+import { logger } from 'src/utils/logger'
 
 const props = defineProps<{
   type?: string;
@@ -310,6 +435,7 @@ const router = useRouter();
 const transactionsStore = useTransactionsStore();
 const categoriesStore = useCategoriesStore();
 const teamsStore = useTeamsStore();
+const catalogsStore = useCatalogsStore();
 
 // State
 const loading = ref(false);
@@ -329,11 +455,35 @@ const paymentMethod = ref<PaymentMethod>('bank_transfer');
 const teamId = ref<string | null>(null);
 const projectId = ref<string | null>(null);
 const eventId = ref<string | null>(null);
+const season = ref<Season | null>(null);
+const seasonOptions = getSeasonOptions();
+const paidDate = ref<string | null>(null);
+const baseAmount = ref<number | null>(null);
+const taxRate = ref<number | null>(null);
+const taxAmount = computed(() => {
+  if (!baseAmount.value || !taxRate.value) return 0;
+  return Math.round(baseAmount.value * taxRate.value / 100 * 100) / 100;
+});
+const sponsorId = ref<string | null>(null);
+const supplierId = ref<string | null>(null);
 const vendor = ref('');
 const invoiceNumber = ref('');
 const reference = ref('');
 const newAttachments = ref<File[]>([]);
 const existingAttachments = ref<Attachment[]>([]);
+
+const taxRateOptions = [
+  { label: 'Sin IVA', value: null },
+  { label: '4% (Superreducido)', value: 4 },
+  { label: '10% (Reducido)', value: 10 },
+  { label: '21% (General)', value: 21 }
+];
+
+function calculateFromBase() {
+  if (baseAmount.value && taxRate.value) {
+    amount.value = Math.round((baseAmount.value + taxAmount.value) * 100) / 100;
+  }
+}
 
 // Options - Categories with hierarchy
 const parentCategoryOptions = computed(() => {
@@ -388,6 +538,20 @@ const eventOptions = computed(() => {
   }));
 });
 
+const sponsorOptions = computed(() => {
+  return catalogsStore.activeSponsors.map(s => ({
+    label: s.name,
+    value: s.id
+  }));
+});
+
+const supplierOptions = computed(() => {
+  return catalogsStore.activeSuppliers.map(s => ({
+    label: s.name,
+    value: s.id
+  }));
+});
+
 const paymentMethodOptions = [
   { label: 'Transferencia bancaria', value: 'bank_transfer' },
   { label: 'Efectivo', value: 'cash' },
@@ -410,18 +574,12 @@ async function handleSubmit() {
     return;
   }
 
-  if (!categoryId.value) {
-    $q.notify({
-      type: 'negative',
-      message: 'Selecciona una categoría'
-    });
-    return;
-  }
-
   loading.value = true;
 
   try {
-    const selectedCategory = categoriesStore.getCategoryById(categoryId.value);
+    // If no category selected, use uncategorized
+    const finalCategoryId = categoryId.value || categoriesStore.getUncategorizedId(transactionType.value as 'income' | 'expense');
+    const selectedCategory = categoriesStore.getCategoryById(finalCategoryId);
     const selectedTeam = teamId.value ? teamsStore.getTeamById(teamId.value) : null;
     const selectedProject = projectId.value ? teamsStore.getProjectById(projectId.value) : null;
     const selectedEvent = eventId.value ? teamsStore.getEventById(eventId.value) : null;
@@ -430,16 +588,25 @@ async function handleSubmit() {
       type: transactionType.value as 'income' | 'expense',
       amount: amount.value,
       description: description.value,
-      categoryId: categoryId.value,
-      categoryName: selectedCategory?.name,
+      categoryId: finalCategoryId,
+      categoryName: selectedCategory?.name || 'Sin categorizar',
+      season: season.value || undefined,
       date: new Date(date.value),
+      paidDate: paidDate.value ? new Date(paidDate.value) : undefined,
       paymentMethod: paymentMethod.value,
+      baseAmount: baseAmount.value || undefined,
+      taxRate: taxRate.value || undefined,
+      taxAmount: taxAmount.value || undefined,
       teamId: teamId.value || undefined,
       teamName: selectedTeam?.name,
       projectId: projectId.value || undefined,
       projectName: selectedProject?.name,
       eventId: eventId.value || undefined,
       eventName: selectedEvent?.name,
+      sponsorId: sponsorId.value || undefined,
+      sponsorName: sponsorId.value ? catalogsStore.getSponsorById(sponsorId.value)?.name : undefined,
+      supplierId: supplierId.value || undefined,
+      supplierName: supplierId.value ? catalogsStore.getSupplierById(supplierId.value)?.name : undefined,
       vendor: vendor.value || undefined,
       invoiceNumber: invoiceNumber.value || undefined,
       reference: reference.value || undefined,
@@ -473,7 +640,7 @@ async function handleSubmit() {
 
     router.push({ name: 'transactions' });
   } catch (error) {
-    console.error('Error saving transaction:', error);
+    logger.error('Error saving transaction:', error);
     $q.notify({
       type: 'negative',
       message: 'Error al guardar la transacción'
@@ -485,10 +652,11 @@ async function handleSubmit() {
 
 // Load categories, teams, and existing transaction if editing
 onMounted(async () => {
-  // Ensure categories and teams are loaded for the form
+  // Ensure categories, teams, and catalogs are loaded for the form
   await Promise.all([
     categoriesStore.fetchCategories(),
-    teamsStore.fetchAll()
+    teamsStore.fetchAll(),
+    catalogsStore.fetchAll()
   ]);
 
   if (isEditing.value) {
@@ -515,9 +683,15 @@ onMounted(async () => {
       
       date.value = format(new Date(transaction.date), 'yyyy-MM-dd');
       paymentMethod.value = transaction.paymentMethod;
+      season.value = transaction.season || null;
       teamId.value = transaction.teamId || null;
       projectId.value = transaction.projectId || null;
       eventId.value = transaction.eventId || null;
+      paidDate.value = transaction.paidDate ? format(new Date(transaction.paidDate), 'yyyy-MM-dd') : null;
+      baseAmount.value = transaction.baseAmount || null;
+      taxRate.value = transaction.taxRate || null;
+      sponsorId.value = transaction.sponsorId || null;
+      supplierId.value = transaction.supplierId || null;
       vendor.value = transaction.vendor || '';
       invoiceNumber.value = transaction.invoiceNumber || '';
       reference.value = transaction.reference || '';
@@ -612,6 +786,28 @@ onMounted(async () => {
 .submit-btn {
   border-radius: var(--radius-md);
   font-weight: 600;
+}
+
+.tax-summary {
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 8px;
+  padding: 12px;
+  
+  .tax-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 4px 0;
+    font-size: 14px;
+    color: rgba(255, 255, 255, 0.7);
+    
+    &.total {
+      border-top: 1px solid rgba(255, 255, 255, 0.1);
+      margin-top: 4px;
+      padding-top: 8px;
+      font-weight: 600;
+      color: #fff;
+    }
+  }
 }
 
 :deep(.q-field) {

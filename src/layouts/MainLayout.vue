@@ -47,10 +47,63 @@
           </q-btn>
 
           <q-btn flat round class="action-btn">
-            <q-icon name="notifications_none" size="22px" />
-            <q-badge v-if="pendingCount > 0" color="negative" floating rounded>
-              {{ pendingCount > 9 ? '9+' : pendingCount }}
+            <q-icon :name="notificationsStore.unreadCount > 0 ? 'notifications_active' : 'notifications_none'" size="22px" />
+            <q-badge v-if="totalBadgeCount > 0" color="negative" floating rounded>
+              {{ totalBadgeCount > 9 ? '9+' : totalBadgeCount }}
             </q-badge>
+
+            <q-menu anchor="bottom right" self="top right" class="notifications-menu">
+              <div class="notifications-panel">
+                <div class="notifications-header">
+                  <span class="notifications-title">Notificaciones</span>
+                  <q-btn
+                    v-if="notificationsStore.unreadCount > 0"
+                    flat
+                    dense
+                    no-caps
+                    size="sm"
+                    label="Marcar todas"
+                    class="mark-all-btn"
+                    @click="notificationsStore.markAllAsRead()"
+                  />
+                </div>
+
+                <!-- Pending approvals shortcut -->
+                <div v-if="authStore.canApprove && pendingCount > 0" class="notification-item notification-pending" @click="goToPending">
+                  <q-icon name="pending_actions" size="20px" color="warning" class="q-mr-sm" />
+                  <div class="notification-body">
+                    <span class="notification-text"><strong>{{ pendingCount }}</strong> transacciones pendientes de aprobación</span>
+                  </div>
+                  <q-icon name="chevron_right" size="18px" color="grey-6" />
+                </div>
+
+                <q-separator v-if="authStore.canApprove && pendingCount > 0 && notificationsStore.recentNotifications.length > 0" />
+
+                <!-- Notification items -->
+                <div v-if="notificationsStore.recentNotifications.length > 0" class="notifications-list">
+                  <div
+                    v-for="n in notificationsStore.recentNotifications"
+                    :key="n.id"
+                    class="notification-item"
+                    :class="{ unread: !n.read }"
+                    @click="handleNotificationClick(n)"
+                  >
+                    <q-icon :name="getNotificationIcon(n.type)" size="20px" :color="getNotificationColor(n.type)" class="q-mr-sm" />
+                    <div class="notification-body">
+                      <span class="notification-text">{{ n.title }}</span>
+                      <span class="notification-time">{{ formatTimeAgo(n.createdAt) }}</span>
+                    </div>
+                    <div v-if="!n.read" class="unread-dot" />
+                  </div>
+                </div>
+
+                <!-- Empty state -->
+                <div v-else-if="pendingCount === 0" class="notifications-empty">
+                  <q-icon name="notifications_off" size="32px" color="grey-6" />
+                  <span>Sin notificaciones</span>
+                </div>
+              </div>
+            </q-menu>
           </q-btn>
 
           <q-btn flat round class="user-btn">
@@ -109,8 +162,8 @@
     <q-drawer
       v-model="leftDrawerOpen"
       :mini="miniState"
-      :width="260"
-      :mini-width="72"
+      :width="190"
+      :mini-width="64"
       :breakpoint="1024"
       class="main-drawer"
       :behavior="$q.screen.lt.md ? 'mobile' : 'desktop'"
@@ -128,17 +181,17 @@
           <nav class="nav-sections">
             <div class="nav-section">
               <p v-if="!miniState || $q.screen.lt.md" class="nav-section-title">Principal</p>
-              <NavItem v-for="item in mainNavItems" :key="item.name" :item="item" :mini="miniState && $q.screen.gt.sm" />
+              <NavItem v-for="item in visibleMainNavItems" :key="item.name" :item="item" :mini="miniState && $q.screen.gt.sm" />
             </div>
 
-            <div class="nav-section">
+            <div v-if="authStore.canViewAll && managementNavItems.length > 0" class="nav-section">
               <p v-if="!miniState || $q.screen.lt.md" class="nav-section-title">Gestión</p>
               <NavItem v-for="item in managementNavItems" :key="item.name" :item="item" :mini="miniState && $q.screen.gt.sm" />
             </div>
 
-            <div v-if="authStore.isManager" class="nav-section">
+            <div v-if="visibleAdminNavItems.length > 0" class="nav-section">
               <p v-if="!miniState || $q.screen.lt.md" class="nav-section-title">Admin</p>
-              <NavItem v-for="item in adminNavItems" :key="item.name" :item="item" :mini="miniState && $q.screen.gt.sm" />
+              <NavItem v-for="item in visibleAdminNavItems" :key="item.name" :item="item" :mini="miniState && $q.screen.gt.sm" />
             </div>
 
             <div v-if="authStore.isAccountant" class="nav-section">
@@ -288,7 +341,7 @@
                 <q-item-section>
                   <q-item-label>{{ result.description }}</q-item-label>
                   <q-item-label caption>
-                    {{ result.categoryName }} · {{ formatDate(result.date) }}
+                    {{ result.categoryName }} · {{ formatDateShort(result.date) }}
                   </q-item-label>
                 </q-item-section>
                 <q-item-section side>
@@ -322,11 +375,18 @@
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useQuasar } from 'quasar'
+import { useDebounceFn } from '@vueuse/core'
 import { useAuthStore } from 'src/stores/auth'
 import { useTransactionsStore } from 'src/stores/transactions'
 import { useCategoriesStore } from 'src/stores/categories'
 import { useTeamsStore } from 'src/stores/teams'
+import { useCatalogsStore } from 'src/stores/catalogs'
+import { useNotificationsStore } from 'src/stores/notifications'
 import NavItem from 'src/components/NavItem.vue'
+import { useSessionTimeout } from 'src/composables/useSessionTimeout'
+import type { Transaction, Notification } from 'src/types'
+import { formatCurrency, formatDateShort } from 'src/utils/formatters'
+import { logger } from 'src/utils/logger'
 
 const $q = useQuasar()
 const router = useRouter()
@@ -335,6 +395,11 @@ const authStore = useAuthStore()
 const transactionsStore = useTransactionsStore()
 const categoriesStore = useCategoriesStore()
 const teamsStore = useTeamsStore()
+const catalogsStore = useCatalogsStore()
+const notificationsStore = useNotificationsStore()
+
+// Auto-logout after 30 min of inactivity
+useSessionTimeout()
 
 const leftDrawerOpen = ref(true)  // Default to open for desktop
 const miniState = ref(false)
@@ -343,7 +408,6 @@ const showSearchDialog = ref(false)
 const searchQuery = ref('')
 const selectedResultIndex = ref(0)
 const searchInputRef = ref<HTMLInputElement | null>(null)
-const allTransactionsLoaded = ref(false)
 const searchLoading = ref(false)
 const scrolled = ref(false)
 const fabHidden = ref(false)
@@ -357,32 +421,59 @@ const mainNavItems = [
   { name: 'statistics', icon: 'bar_chart', label: 'Estadísticas', to: { name: 'statistics' } }
 ]
 
-const managementNavItems = [
-  { name: 'teams', icon: 'groups', label: 'Equipos', to: { name: 'teams' } },
-  { name: 'projects', icon: 'folder', label: 'Proyectos', to: { name: 'projects' } },
-  { name: 'events', icon: 'event', label: 'Eventos', to: { name: 'events' } }
-]
+// For employees: hide statistics (they can only see own transactions)
+const visibleMainNavItems = computed(() => {
+  if (authStore.isEmployee) {
+    return mainNavItems.filter(i => i.name !== 'statistics')
+  }
+  return mainNavItems
+})
 
-const adminNavItems = computed(() => [
-  { name: 'pending', icon: 'pending_actions', label: 'Pendientes', to: { name: 'pending' }, badge: pendingCount.value },
-  { name: 'treasury', icon: 'show_chart', label: 'Tesorería', to: { name: 'treasury' } },
-  { name: 'profitability', icon: 'account_balance_wallet', label: 'Rentabilidad', to: { name: 'profitability' } },
-  { name: 'closings', icon: 'lock', label: 'Cierres', to: { name: 'closings' } },
-  { name: 'categories', icon: 'category', label: 'Categorías', to: { name: 'categories' } },
-  { name: 'forecasts', icon: 'analytics', label: 'Previsiones', to: { name: 'forecasts' } }
-])
+const managementNavItems: { name: string; icon: string; label: string; to: { name: string } }[] = []
+
+// Admin section — items shown based on permissions
+const visibleAdminNavItems = computed(() => {
+  const items: { name: string; icon: string; label: string; to: { name: string }; badge?: number }[] = []
+
+  // Pending approvals — admin, manager, controller
+  if (authStore.canApprove) {
+    items.push({ name: 'pending', icon: 'pending_actions', label: 'Pendientes', to: { name: 'pending' }, badge: pendingCount.value })
+  }
+
+  // Treasury, profitability, forecasts — anyone who can view stats (not employee)
+  if (authStore.canViewStats) {
+    items.push({ name: 'treasury', icon: 'show_chart', label: 'Tesorería', to: { name: 'treasury' } })
+    items.push({ name: 'profitability', icon: 'account_balance_wallet', label: 'Rentabilidad', to: { name: 'profitability' } })
+    items.push({ name: 'forecasts', icon: 'analytics', label: 'Previsiones', to: { name: 'forecasts' } })
+  }
+
+  // Closings — admin, controller
+  if (authStore.canDoClosings) {
+    items.push({ name: 'closings', icon: 'lock', label: 'Cierres', to: { name: 'closings' } })
+  }
+
+  // Settings — always visible (profile at minimum), but full settings only for admin/manager
+  items.push({ name: 'settings', icon: 'settings', label: 'Ajustes', to: { name: 'settings' } })
+
+  return items
+})
 
 const accountantNavItems = [
   { name: 'accountant', icon: 'account_balance', label: 'Gestoría', to: { name: 'accountant' } },
   { name: 'accountant-export', icon: 'download', label: 'Exportar', to: { name: 'accountant-export' } }
 ]
 
-const mobileNavItems = [
-  { name: 'dashboard', icon: 'dashboard', label: 'Inicio', to: { name: 'dashboard' } },
-  { name: 'expenses', icon: 'trending_down', label: 'Gastos', to: { name: 'expenses' } },
-  { name: 'income', icon: 'trending_up', label: 'Ingresos', to: { name: 'income' } },
-  { name: 'statistics', icon: 'bar_chart', label: 'Stats', to: { name: 'statistics' } }
-]
+const mobileNavItems = computed(() => {
+  const items = [
+    { name: 'dashboard', icon: 'dashboard', label: 'Inicio', to: { name: 'dashboard' } },
+    { name: 'expenses', icon: 'trending_down', label: 'Gastos', to: { name: 'expenses' } },
+    { name: 'income', icon: 'trending_up', label: 'Ingresos', to: { name: 'income' } }
+  ]
+  if (authStore.canViewStats) {
+    items.push({ name: 'statistics', icon: 'bar_chart', label: 'Stats', to: { name: 'statistics' } })
+  }
+  return items
+})
 
 // Computed
 const userInitials = computed(() => {
@@ -391,63 +482,113 @@ const userInitials = computed(() => {
 })
 
 const pendingCount = computed(() => transactionsStore.pendingTransactions.length)
-
-// Search functionality
-const searchResults = computed(() => {
-  if (searchQuery.value.length < 2) return []
-  
-  const query = searchQuery.value.toLowerCase()
-  
-  return transactionsStore.transactions
-    .filter(t => {
-      // Search in description
-      if (t.description.toLowerCase().includes(query)) return true
-      
-      // Search in category name
-      const category = categoriesStore.getCategoryById(t.categoryId)
-      if (category?.name.toLowerCase().includes(query)) return true
-      
-      // Search in team name
-      if (t.teamId) {
-        const team = teamsStore.getTeamById(t.teamId)
-        if (team?.name.toLowerCase().includes(query)) return true
-      }
-      
-      // Search in amount (as string)
-      if (t.amount.toString().includes(query)) return true
-      
-      return false
-    })
-    .map(t => ({
-      ...t,
-      categoryName: categoriesStore.getCategoryById(t.categoryId)?.name || 'Sin categoría',
-      teamName: t.teamId ? teamsStore.getTeamById(t.teamId)?.name : undefined
-    }))
-    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+const totalBadgeCount = computed(() => {
+  const notifUnread = notificationsStore.unreadCount
+  const pending = authStore.canApprove ? pendingCount.value : 0
+  return notifUnread + pending
 })
 
-// Watch for search dialog open to focus input and load transactions
-watch(showSearchDialog, async (newVal) => {
+// Notification helpers
+function getNotificationIcon(type: Notification['type']): string {
+  const icons: Record<Notification['type'], string> = {
+    transaction_created: 'add_circle',
+    transaction_approved: 'check_circle',
+    transaction_rejected: 'cancel',
+    month_closed: 'lock',
+    reminder: 'schedule'
+  }
+  return icons[type] || 'notifications'
+}
+
+function getNotificationColor(type: Notification['type']): string {
+  const colors: Record<Notification['type'], string> = {
+    transaction_created: 'info',
+    transaction_approved: 'positive',
+    transaction_rejected: 'negative',
+    month_closed: 'primary',
+    reminder: 'warning'
+  }
+  return colors[type] || 'grey'
+}
+
+function formatTimeAgo(date: Date | string): string {
+  const now = Date.now()
+  const then = new Date(date).getTime()
+  const diffMs = now - then
+  const diffMin = Math.floor(diffMs / 60_000)
+  if (diffMin < 1) return 'Ahora'
+  if (diffMin < 60) return `hace ${diffMin}m`
+  const diffH = Math.floor(diffMin / 60)
+  if (diffH < 24) return `hace ${diffH}h`
+  const diffD = Math.floor(diffH / 24)
+  if (diffD < 7) return `hace ${diffD}d`
+  return new Date(date).toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })
+}
+
+function handleNotificationClick(n: Notification) {
+  if (!n.read) notificationsStore.markAsRead(n.id)
+  if (n.link) router.push(n.link)
+}
+
+function goToPending() {
+  router.push({ name: 'pending' })
+}
+
+// Search functionality — server-side via searchKeywords
+const searchResults = ref<(Transaction & { categoryName: string; teamName?: string })[]>([])
+
+async function performSearch(query: string) {
+  if (query.length < 2) {
+    searchResults.value = []
+    return
+  }
+  
+  searchLoading.value = true
+  try {
+    // Fetch from Firebase using searchQuery filter
+    await transactionsStore.fetchTransactions({ searchQuery: query })
+    
+    // Map results with category/team names
+    searchResults.value = transactionsStore.transactions
+      .map(t => ({
+        ...t,
+        categoryName: categoriesStore.getCategoryById(t.categoryId)?.name || 'Sin categoría',
+        teamName: t.teamId ? teamsStore.getTeamById(t.teamId)?.name : undefined
+      }))
+      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+  } catch (e) {
+    logger.error('Search error:', e)
+    searchResults.value = []
+  } finally {
+    searchLoading.value = false
+  }
+}
+
+const debouncedSearch = useDebounceFn((q: string) => performSearch(q), 300)
+
+// Watch for search dialog open/close
+watch(showSearchDialog, (newVal) => {
   if (newVal) {
-    // Always load all transactions for search (if not already done)
-    if (!allTransactionsLoaded.value) {
-      searchLoading.value = true
-      await transactionsStore.fetchTransactions({})
-      allTransactionsLoaded.value = true
-      searchLoading.value = false
-    }
     setTimeout(() => {
       searchInputRef.value?.focus()
     }, 100)
   } else {
     searchQuery.value = ''
+    searchResults.value = []
     selectedResultIndex.value = 0
+    // Restore the main transaction list (no filters)
+    transactionsStore.fetchTransactions({})
   }
 })
 
-// Watch search query to reset selected index
-watch(searchQuery, () => {
+// Watch search query — debounced server-side search
+watch(searchQuery, (newVal) => {
   selectedResultIndex.value = 0
+  if (newVal.length < 2) {
+    searchResults.value = []
+    return
+  }
+  debouncedSearch(newVal)
 })
 
 // Keyboard shortcut for search
@@ -456,15 +597,6 @@ function handleKeyboardShortcut(e: KeyboardEvent) {
     e.preventDefault()
     showSearchDialog.value = true
   }
-}
-
-function formatDate(date: string | Date): string {
-  const d = new Date(date)
-  return d.toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' })
-}
-
-function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(amount)
 }
 
 function goToTransaction(id: string) {
@@ -511,6 +643,7 @@ function toggleDarkMode() {
 }
 
 async function handleLogout() {
+  notificationsStore.stop()
   await authStore.logout()
   router.push({ name: 'login' })
 }
@@ -528,19 +661,38 @@ watch(() => route.name, () => {
   if ($q.screen.lt.md) leftDrawerOpen.value = false
 })
 
+async function loadData() {
+  if (authStore.isAuthenticated) {
+    // Start real-time notifications listener
+    notificationsStore.subscribe()
+
+    await Promise.all([
+      categoriesStore.fetchCategories(),
+      teamsStore.fetchAll(),
+      catalogsStore.fetchAll(),
+      transactionsStore.fetchTransactions({})
+    ])
+  }
+}
+
 onMounted(async () => {
   const savedDarkMode = localStorage.getItem('darkMode')
-  if (savedDarkMode !== null) $q.dark.set(savedDarkMode === 'true')
+  if (savedDarkMode !== null) {
+    $q.dark.set(savedDarkMode === 'true')
+  } else {
+    $q.dark.set(true) // Default to dark mode
+  }
 
   window.addEventListener('scroll', handleScroll, { passive: true })
   window.addEventListener('keydown', handleKeyboardShortcut)
 
-  if (authStore.clubId) {
-    await Promise.all([
-      categoriesStore.fetchCategories(),
-      teamsStore.fetchAll(),
-      transactionsStore.fetchTransactions({})
-    ])
+  await loadData()
+})
+
+// Watch for auth changes (e.g. after registration redirect)
+watch(() => authStore.isAuthenticated, async (isAuth) => {
+  if (isAuth && transactionsStore.transactions.length === 0) {
+    await loadData()
   }
 })
 
@@ -670,6 +822,105 @@ onUnmounted(() => {
   }
 }
 
+// === NOTIFICATIONS PANEL ===
+.notifications-menu {
+  margin-top: var(--space-2);
+}
+
+.notifications-panel {
+  width: 360px;
+  max-height: 480px;
+  overflow-y: auto;
+  background: var(--color-bg-elevated);
+  border-radius: var(--radius-xl);
+}
+
+.notifications-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-4) var(--space-5);
+  border-bottom: 1px solid var(--color-border-light);
+
+  .notifications-title {
+    font-weight: 700;
+    font-size: 0.9375rem;
+    color: var(--color-text-primary);
+  }
+
+  .mark-all-btn {
+    font-size: 0.75rem;
+    color: var(--color-accent);
+  }
+}
+
+.notifications-list {
+  padding: var(--space-1) 0;
+}
+
+.notification-item {
+  display: flex;
+  align-items: center;
+  padding: var(--space-3) var(--space-5);
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-out);
+
+  &:hover {
+    background: var(--color-bg-tertiary);
+  }
+
+  &.unread {
+    background: rgba(99, 91, 255, 0.04);
+  }
+
+  &.notification-pending {
+    background: rgba(255, 181, 69, 0.06);
+  }
+
+  .notification-body {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .notification-text {
+    font-size: 0.8125rem;
+    color: var(--color-text-primary);
+    line-height: 1.3;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  .notification-time {
+    font-size: 0.6875rem;
+    color: var(--color-text-muted);
+  }
+
+  .unread-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--color-accent);
+    flex-shrink: 0;
+    margin-left: var(--space-2);
+  }
+}
+
+.notifications-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: var(--space-8);
+  color: var(--color-text-muted);
+  font-size: 0.8125rem;
+}
+
 .user-avatar {
   background: var(--gradient-accent);
   color: white;
@@ -746,11 +997,11 @@ onUnmounted(() => {
 }
 
 .drawer-scroll {
-  padding-top: var(--space-4);
+  padding-top: var(--space-3);
 }
 
 .drawer-content {
-  padding: 0 var(--space-2);
+  padding: 0 var(--space-1);
 }
 
 .drawer-logo-mini {
@@ -773,17 +1024,17 @@ onUnmounted(() => {
 .nav-sections {
   display: flex;
   flex-direction: column;
-  gap: var(--space-6);
+  gap: var(--space-4);
 }
 
 .nav-section-title {
-  font-size: 0.6875rem;
+  font-size: 0.625rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--color-text-muted);
-  padding: 0 var(--space-4);
-  margin: 0 0 var(--space-2);
+  padding: 0 var(--space-3);
+  margin: 0 0 var(--space-1);
 }
 
 .drawer-toggle {

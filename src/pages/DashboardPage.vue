@@ -25,17 +25,17 @@
 
     <!-- Main Content -->
     <div class="page-content">
-      <!-- Financial Health Dashboard - Main Feature -->
-      <section class="health-section animate-in">
+      <!-- Financial Health Dashboard - Main Feature (not for employees) -->
+      <section v-if="authStore.canViewStats" class="health-section animate-in">
         <FinancialHealthDashboard
           :health-data="financialHealth"
           :alerts="budgetAlerts"
-          :season-year="seasonYear"
+          :season="currentSeason"
         />
       </section>
 
-      <!-- Monthly Pulse Widget -->
-      <section class="pulse-section animate-in" style="animation-delay: 100ms">
+      <!-- Monthly Pulse Widget (not for employees) -->
+      <section v-if="authStore.canViewStats" class="pulse-section animate-in" style="animation-delay: 100ms">
         <div class="dashboard-grid-2col">
           <MonthlyPulseWidget
             :actual-income="monthlyIncome"
@@ -117,8 +117,8 @@
         </div>
       </section>
 
-      <!-- Budget Gauges -->
-      <section v-if="hasTransactions" class="gauges-section animate-in" style="animation-delay: 220ms">
+      <!-- Budget Gauges (not for employees) -->
+      <section v-if="hasTransactions && authStore.canViewStats" class="gauges-section animate-in" style="animation-delay: 220ms">
         <div class="gauges-grid">
           <BudgetGauge
             title="Cumplimiento Ingresos"
@@ -135,23 +135,24 @@
         </div>
       </section>
 
-      <!-- Waterfall Chart - Balance Evolution -->
-      <section v-if="hasTransactions" class="waterfall-section animate-in" style="animation-delay: 250ms">
+      <!-- Waterfall Chart - Balance Evolution (not for employees) -->
+      <section v-if="hasTransactions && authStore.canViewStats" class="waterfall-section animate-in" style="animation-delay: 250ms">
         <WaterfallChart
           title="Evolución del Balance"
           subtitle="Flujo de caja mensual de la temporada"
           :months="12"
           :starting-balance="0"
           :show-details="true"
+          :season="currentSeason"
         />
       </section>
 
-      <!-- Activity Heatmap -->
-      <section v-if="hasTransactions" class="heatmap-section animate-in" style="animation-delay: 280ms">
+      <!-- Activity Heatmap (not for employees) -->
+      <section v-if="hasTransactions && authStore.canViewStats" class="heatmap-section animate-in" style="animation-delay: 280ms">
         <ActivityHeatmap
           title="Actividad Financiera"
-          subtitle="Movimientos de los últimos 6 meses"
-          :months="6"
+          :subtitle="`Movimientos de la temporada ${currentSeason}`"
+          :season="currentSeason"
         />
       </section>
 
@@ -248,11 +249,11 @@
                     <q-icon name="remove" />
                     <span>Gasto</span>
                   </router-link>
-                  <router-link :to="{ name: 'statistics' }" class="quick-action action-accent">
+                  <router-link v-if="authStore.canViewStats" :to="{ name: 'statistics' }" class="quick-action action-accent">
                     <q-icon name="bar_chart" />
                     <span>Estadísticas</span>
                   </router-link>
-                  <router-link :to="{ name: 'teams' }" class="quick-action action-info">
+                  <router-link v-if="authStore.canManageSettings" :to="{ name: 'teams' }" class="quick-action action-info">
                     <q-icon name="groups" />
                     <span>Equipos</span>
                   </router-link>
@@ -297,6 +298,7 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
+import { formatCurrency, formatCurrencyShort } from 'src/utils/formatters'
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -321,7 +323,9 @@ import WaterfallChart from 'src/components/WaterfallChart.vue'
 import BudgetGauge from 'src/components/BudgetGauge.vue'
 import ActivityHeatmap from 'src/components/ActivityHeatmap.vue'
 import { calculateFinancialHealth, generateBudgetAlerts } from 'src/services/financialHealth'
+import { useBudgetStore } from 'src/stores/budget'
 import type { FinancialHealthData, BudgetAlert } from 'src/types'
+import { computeSeason, getSeasonDates } from 'src/types'
 
 ChartJS.register(
   CategoryScale,
@@ -339,16 +343,20 @@ const authStore = useAuthStore()
 const transactionsStore = useTransactionsStore()
 const statisticsStore = useStatisticsStore()
 const teamsStore = useTeamsStore()
+const budgetStore = useBudgetStore()
 
 const loading = ref(false)
 const chartPeriod = ref(6)
+
+// Always use current season for dashboard
+const currentSeason = computeSeason(new Date())
 
 // Financial Health
 const financialHealth = ref<FinancialHealthData>({
   currentBalance: 0,
   totalIncomeYTD: 0,
   totalExpensesYTD: 0,
-  targetSurplus: 500,
+  targetSurplus: 0,
   budgetedIncomeYTD: 0,
   budgetedExpensesYTD: 0,
   progressPercent: 0,
@@ -362,10 +370,6 @@ const financialHealth = ref<FinancialHealthData>({
   expensesOnTrack: true
 })
 const budgetAlerts = ref<BudgetAlert[]>([])
-const seasonYear = computed(() => {
-  const now = new Date()
-  return now.getMonth() >= 8 ? now.getFullYear() : now.getFullYear() - 1
-})
 
 // Computed
 const greeting = computed(() => {
@@ -412,14 +416,13 @@ const monthlyExpenses = computed(() =>
     .reduce((sum, t) => sum + t.amount, 0)
 )
 
-// Expected values - in a real app these would come from forecasts/budgets
+// Expected values from real budget data
 const expectedMonthlyIncome = computed(() => {
-  // Use budgeted values or estimate from historical data
-  return financialHealth.value.budgetedIncomeYTD / 10 || 15000 // Avg per month
+  return budgetStore.totalIncomeBudget / 12 || 0
 })
 
 const expectedMonthlyExpenses = computed(() => {
-  return financialHealth.value.budgetedExpensesYTD / 10 || 14500 // Avg per month
+  return budgetStore.totalExpenseBudget / 12 || 0
 })
 
 const avgDailyIncome = computed(() => {
@@ -432,10 +435,15 @@ const avgDailyExpenses = computed(() => {
   return dayOfMonth > 0 ? monthlyExpenses.value / dayOfMonth : 0
 })
 
-// Chart data
+// Chart data — slice to chartPeriod months (from the season trend data)
 const trendChartData = computed(() => {
-  const data = statisticsStore.trendData
-  if (!data.length) return null
+  const allData = statisticsStore.trendData
+  if (!allData.length) return null
+
+  // Show last N months of the season data
+  const data = chartPeriod.value < allData.length
+    ? allData.slice(allData.length - chartPeriod.value)
+    : allData
 
   return {
     labels: data.map(d => d.label),
@@ -573,19 +581,6 @@ const doughnutOptions = {
 }
 
 // Methods
-function formatCurrency(value: number): string {
-  return new Intl.NumberFormat('es-ES', {
-    style: 'currency',
-    currency: 'EUR',
-    minimumFractionDigits: 0
-  }).format(value)
-}
-
-function formatCurrencyShort(value: number): string {
-  if (value >= 1000000) return `${(value / 1000000).toFixed(1)}M€`
-  if (value >= 1000) return `${(value / 1000).toFixed(0)}k€`
-  return `${Math.round(value)}€`
-}
 
 function formatDay(date: Date): string {
   return format(new Date(date), 'd')
@@ -601,30 +596,26 @@ function formatTime(date: Date): string {
 
 function updateFinancialHealth() {
   const transactions = transactionsStore.transactions
-  financialHealth.value = calculateFinancialHealth(transactions)
-  budgetAlerts.value = generateBudgetAlerts(transactions, financialHealth.value)
+  const budget = budgetStore.currentBudget
+  financialHealth.value = calculateFinancialHealth(transactions, budget)
+  budgetAlerts.value = generateBudgetAlerts(transactions, financialHealth.value, budget)
 }
 
 async function refreshData() {
   loading.value = true
   try {
-    const now = new Date()
-    const year = now.getFullYear()
-    const month = now.getMonth() + 1
+    // Fetch ALL transactions for the current season (charts need the full dataset)
+    const seasonDates = getSeasonDates(currentSeason)
+    const transactionsPromise = transactionsStore.fetchAllInDateRange(
+      seasonDates.start,
+      seasonDates.end
+    )
 
-    // Only fetch transactions if not already loaded (MainLayout loads them)
-    const transactionsPromise = transactionsStore.transactions.length === 0
-      ? transactionsStore.fetchTransactions({})
-      : Promise.resolve()
-
+    // Fetch current season data
     await Promise.all([
-      statisticsStore.fetchMonthlyStats(year, month),
-      statisticsStore.fetchTrendData(chartPeriod.value),
-      statisticsStore.fetchCategoryStats(
-        new Date(year, month - 1, 1),
-        new Date(year, month, 0),
-        'expense'
-      ),
+      statisticsStore.fetchSeasonTrendData(currentSeason),
+      statisticsStore.fetchSeasonCategoryStats(currentSeason, 'expense'),
+      budgetStore.fetchBudgets(),
       transactionsPromise,
       teamsStore.fetchEvents()
     ])
@@ -636,9 +627,7 @@ async function refreshData() {
   }
 }
 
-watch(chartPeriod, () => {
-  statisticsStore.fetchTrendData(chartPeriod.value)
-})
+// chartPeriod changes are handled reactively via trendChartData computed
 
 // Watch for transaction changes (using length to avoid deep comparison)
 watch(
@@ -655,6 +644,7 @@ onMounted(() => {
   }
   refreshData()
 })
+
 </script>
 
 <style lang="scss" scoped>
@@ -678,6 +668,12 @@ onMounted(() => {
     @media (min-width: 768px) {
       font-size: 2.5rem;
     }
+  }
+
+  .header-right {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
   }
 
   .refresh-btn {

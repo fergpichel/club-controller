@@ -43,12 +43,21 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
 import CashFlowTimeline from 'src/components/CashFlowTimeline.vue'
 import MoneyFlowSankey from 'src/components/MoneyFlowSankey.vue'
 import WhatIfSimulator from 'src/components/WhatIfSimulator.vue'
+import { useTransactionsStore } from 'src/stores/transactions'
+import { computeSeason, getSeasonDates } from 'src/types'
 
+const transactionsStore = useTransactionsStore()
 const activeView = ref('cashflow')
+
+onMounted(async () => {
+  const season = computeSeason(new Date())
+  const { start, end } = getSeasonDates(season)
+  await transactionsStore.fetchAllInDateRange(start, end)
+})
 
 const views = [
   { id: 'cashflow', label: 'Cash Flow', icon: 'show_chart' },

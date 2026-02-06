@@ -1,74 +1,51 @@
 /**
  * FINANCIAL HEALTH SERVICE
- * Calcula la salud financiera del club y genera alertas
+ * Calcula la salud financiera del club usando datos reales del presupuesto
  */
 
 import type {
   Transaction,
+  Budget,
   FinancialHealthData,
   BudgetAlert,
   HealthStatus
 } from 'src/types'
-import { mockData, ANNUAL_BUDGET } from 'src/mocks/data'
+import { getSeasonDates, computeSeason } from 'src/types'
 
-interface MonthlyBudget {
-  month: number
-  income: Record<string, number>
-  expenses: Record<string, number>
+// Calcular el progreso de la temporada (0 a 1)
+function getSeasonProgress(season: string): number {
+  const now = new Date()
+  const dates = getSeasonDates(season)
+  const totalMs = dates.end.getTime() - dates.start.getTime()
+  const elapsedMs = Math.max(0, Math.min(now.getTime() - dates.start.getTime(), totalMs))
+  return totalMs > 0 ? elapsedMs / totalMs : 0
 }
 
-// Obtener el mes de la temporada (1=sept, 12=agosto)
-function getSeasonMonth(date: Date): number {
-  const month = date.getMonth() + 1 // 1-12
-  if (month >= 9) return month - 8 // Sept=1, Oct=2, etc
-  return month + 4 // Jan=5, Feb=6, etc
+// Obtener el mes de la temporada (1=primer mes, 12=último)
+function getSeasonMonth(season: string): number {
+  const progress = getSeasonProgress(season)
+  return Math.max(1, Math.ceil(progress * 12))
 }
 
-// Calcular ingresos/gastos presupuestados hasta la fecha
-function getBudgetedAmountsYTD(
-  monthlyDistribution: MonthlyBudget[],
-  currentDate: Date
-): { income: number; expenses: number } {
-  const currentSeasonMonth = getSeasonMonth(currentDate)
-  const dayOfMonth = currentDate.getDate()
-  const totalDaysInMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0).getDate()
-  const monthProgress = dayOfMonth / totalDaysInMonth
-
-  let totalIncome = 0
-  let totalExpenses = 0
-
-  monthlyDistribution.forEach(m => {
-    const seasonMonth = m.month >= 9 ? m.month - 8 : m.month + 4
-    const monthIncome = Object.values(m.income).reduce((a, b) => a + b, 0)
-    const monthExpenses = Object.values(m.expenses).reduce((a, b) => a + b, 0)
-
-    if (seasonMonth < currentSeasonMonth) {
-      // Meses completos pasados
-      totalIncome += monthIncome
-      totalExpenses += monthExpenses
-    } else if (seasonMonth === currentSeasonMonth) {
-      // Mes actual (prorratear)
-      totalIncome += monthIncome * monthProgress
-      totalExpenses += monthExpenses * monthProgress
-    }
-  })
-
-  return { income: totalIncome, expenses: totalExpenses }
-}
-
-// Calcular salud financiera
+/**
+ * Calcular salud financiera a partir de transacciones reales y presupuesto.
+ * Si no hay presupuesto, devuelve datos parciales basados solo en transacciones.
+ */
 export function calculateFinancialHealth(
   transactions: Transaction[],
-  targetSurplus: number = ANNUAL_BUDGET.targetSurplus
+  budget: Budget | null
 ): FinancialHealthData {
   const now = new Date()
-  const seasonStartYear = now.getMonth() >= 8 ? now.getFullYear() : now.getFullYear() - 1
-  const seasonStart = new Date(seasonStartYear, 8, 1) // 1 de septiembre
+  const season = computeSeason(now)
+  const dates = getSeasonDates(season)
+  const seasonProgress = getSeasonProgress(season)
+  const currentSeasonMonth = getSeasonMonth(season)
+  const totalSeasonMonths = 12
 
   // Filtrar transacciones de la temporada actual
   const seasonTransactions = transactions.filter(t => {
     const txnDate = new Date(t.date)
-    return txnDate >= seasonStart && txnDate <= now && t.status !== 'rejected'
+    return txnDate >= dates.start && txnDate <= now && t.status !== 'rejected'
   })
 
   // Calcular totales actuales
@@ -82,31 +59,29 @@ export function calculateFinancialHealth(
 
   const currentBalance = totalIncomeYTD - totalExpensesYTD
 
-  // Obtener presupuesto hasta la fecha
-  const budgetedYTD = getBudgetedAmountsYTD(
-    mockData.monthlyDistribution as MonthlyBudget[],
-    now
-  )
+  // Presupuesto — si existe, prorratear al punto actual; si no, usar 0
+  const totalBudgetedIncome = budget
+    ? budget.incomeAllocations.reduce((sum, a) => sum + a.amount, 0)
+    : 0
+  const totalBudgetedExpenses = budget
+    ? budget.expenseAllocations.reduce((sum, a) => sum + a.amount, 0)
+    : 0
+  const targetSurplus = budget?.targetSurplus || 0
 
-  const budgetedIncomeYTD = budgetedYTD.income
-  const budgetedExpensesYTD = budgetedYTD.expenses
+  const budgetedIncomeYTD = Math.round(totalBudgetedIncome * seasonProgress)
+  const budgetedExpensesYTD = Math.round(totalBudgetedExpenses * seasonProgress)
   const budgetedBalanceYTD = budgetedIncomeYTD - budgetedExpensesYTD
 
-  // Calcular desviación
+  // Desviación
   const balanceVsBudget = currentBalance - budgetedBalanceYTD
 
-  // Calcular progreso hacia el objetivo
-  // Si el objetivo es 500€ y llevamos 300€, progreso = 60%
+  // Progreso hacia el objetivo de superávit
   const progressPercent = targetSurplus !== 0
     ? (currentBalance / targetSurplus) * 100
     : currentBalance >= 0 ? 100 : 0
 
   // Proyección de fin de temporada
-  const currentSeasonMonth = getSeasonMonth(now)
-  const totalSeasonMonths = 12
   const monthsRemaining = totalSeasonMonths - currentSeasonMonth
-
-  // Calcular tendencia mensual
   const avgMonthlyBalance = currentSeasonMonth > 0 ? currentBalance / currentSeasonMonth : 0
   const projectedYearEndBalance = currentBalance + (avgMonthlyBalance * monthsRemaining)
 
@@ -117,40 +92,48 @@ export function calculateFinancialHealth(
   let status: HealthStatus
   let statusMessage: string
 
-  const deviationPercent = budgetedBalanceYTD !== 0
-    ? (balanceVsBudget / Math.abs(budgetedBalanceYTD)) * 100
-    : 0
-
-  if (deviationPercent >= 5) {
-    status = 'excellent'
-    statusMessage = 'Vamos por encima del presupuesto. ¡Excelente gestión!'
-  } else if (deviationPercent >= -5) {
-    status = 'good'
-    statusMessage = 'Estamos dentro del margen presupuestado.'
-  } else if (deviationPercent >= -15) {
-    status = 'warning'
-    statusMessage = 'Ligera desviación negativa. Conviene revisar gastos o buscar ingresos adicionales.'
+  if (!budget) {
+    // Sin presupuesto — solo informar del balance
+    status = currentBalance >= 0 ? 'good' : 'warning'
+    statusMessage = currentBalance >= 0
+      ? `Balance positivo de ${Math.round(currentBalance)}€. Configura el presupuesto para un análisis detallado.`
+      : `Balance negativo de ${Math.round(currentBalance)}€. Configura el presupuesto para un análisis detallado.`
   } else {
-    status = 'critical'
-    statusMessage = 'Desviación significativa. Se requieren acciones correctivas urgentes.'
+    const deviationPercent = budgetedBalanceYTD !== 0
+      ? (balanceVsBudget / Math.abs(budgetedBalanceYTD)) * 100
+      : 0
+
+    if (deviationPercent >= 5) {
+      status = 'excellent'
+      statusMessage = 'Vamos por encima del presupuesto. ¡Excelente gestión!'
+    } else if (deviationPercent >= -5) {
+      status = 'good'
+      statusMessage = 'Estamos dentro del margen presupuestado.'
+    } else if (deviationPercent >= -15) {
+      status = 'warning'
+      statusMessage = 'Ligera desviación negativa. Conviene revisar gastos o buscar ingresos adicionales.'
+    } else {
+      status = 'critical'
+      statusMessage = 'Desviación significativa. Se requieren acciones correctivas urgentes.'
+    }
   }
 
-  // Determinar tendencia
+  // Tendencia
   let monthlyTrend: 'improving' | 'stable' | 'declining' = 'stable'
   if (balanceVsBudget > 500) monthlyTrend = 'improving'
   else if (balanceVsBudget < -500) monthlyTrend = 'declining'
 
   // Verificar si ingresos/gastos están on track
-  const incomeOnTrack = totalIncomeYTD >= budgetedIncomeYTD * 0.95
-  const expensesOnTrack = totalExpensesYTD <= budgetedExpensesYTD * 1.05
+  const incomeOnTrack = budgetedIncomeYTD === 0 || totalIncomeYTD >= budgetedIncomeYTD * 0.95
+  const expensesOnTrack = budgetedExpensesYTD === 0 || totalExpensesYTD <= budgetedExpensesYTD * 1.05
 
   return {
     currentBalance,
     totalIncomeYTD,
     totalExpensesYTD,
     targetSurplus,
-    budgetedIncomeYTD: Math.round(budgetedIncomeYTD),
-    budgetedExpensesYTD: Math.round(budgetedExpensesYTD),
+    budgetedIncomeYTD,
+    budgetedExpensesYTD,
     progressPercent,
     balanceVsBudget: Math.round(balanceVsBudget),
     projectedYearEndBalance: Math.round(projectedYearEndBalance),
@@ -163,13 +146,29 @@ export function calculateFinancialHealth(
   }
 }
 
-// Generar alertas de presupuesto
+/**
+ * Generar alertas de presupuesto a partir de datos de salud y transacciones.
+ * Compara gastos por categoría contra las asignaciones del presupuesto real.
+ */
 export function generateBudgetAlerts(
   transactions: Transaction[],
-  healthData: FinancialHealthData
+  healthData: FinancialHealthData,
+  budget: Budget | null
 ): BudgetAlert[] {
   const alerts: BudgetAlert[] = []
   const now = new Date()
+
+  // Sin presupuesto → alerta única informativa
+  if (!budget) {
+    alerts.push({
+      id: 'alert_no_budget',
+      type: 'deviation',
+      severity: 'warning',
+      message: 'No hay presupuesto configurado para esta temporada. Ve a Ajustes → Presupuesto.',
+      createdAt: now
+    })
+    return alerts
+  }
 
   // Alerta de desviación general
   if (healthData.status === 'critical') {
@@ -178,7 +177,9 @@ export function generateBudgetAlerts(
       type: 'deviation',
       severity: 'critical',
       message: `Balance actual ${healthData.balanceVsBudget}€ por debajo de lo presupuestado`,
-      percentDeviation: Math.round((healthData.balanceVsBudget / healthData.budgetedIncomeYTD) * 100),
+      percentDeviation: healthData.budgetedIncomeYTD > 0
+        ? Math.round((healthData.balanceVsBudget / healthData.budgetedIncomeYTD) * 100)
+        : 0,
       createdAt: now
     })
   } else if (healthData.status === 'warning') {
@@ -187,13 +188,15 @@ export function generateBudgetAlerts(
       type: 'deviation',
       severity: 'warning',
       message: 'El balance está ligeramente por debajo del presupuesto',
-      percentDeviation: Math.round((healthData.balanceVsBudget / healthData.budgetedIncomeYTD) * 100),
+      percentDeviation: healthData.budgetedIncomeYTD > 0
+        ? Math.round((healthData.balanceVsBudget / healthData.budgetedIncomeYTD) * 100)
+        : 0,
       createdAt: now
     })
   }
 
   // Alerta de ingresos bajos
-  if (!healthData.incomeOnTrack) {
+  if (!healthData.incomeOnTrack && healthData.budgetedIncomeYTD > 0) {
     const deficit = healthData.budgetedIncomeYTD - healthData.totalIncomeYTD
     alerts.push({
       id: 'alert_income',
@@ -206,7 +209,7 @@ export function generateBudgetAlerts(
   }
 
   // Alerta de gastos altos
-  if (!healthData.expensesOnTrack) {
+  if (!healthData.expensesOnTrack && healthData.budgetedExpensesYTD > 0) {
     const excess = healthData.totalExpensesYTD - healthData.budgetedExpensesYTD
     alerts.push({
       id: 'alert_expenses',
@@ -230,90 +233,61 @@ export function generateBudgetAlerts(
     })
   }
 
-  // Analizar categorías con mayor desviación
-  const categoryTotals = analyzeByCategory(transactions)
-  categoryTotals.forEach(cat => {
-    if (cat.percentOver > 15) {
-      alerts.push({
-        id: `alert_cat_${cat.categoryId}`,
-        type: 'overspend',
-        severity: cat.percentOver > 30 ? 'critical' : 'warning',
-        categoryId: cat.categoryId,
-        categoryName: cat.categoryName,
-        message: `${cat.categoryName}: ${cat.percentOver}% por encima del presupuesto`,
-        percentDeviation: cat.percentOver,
-        createdAt: now
-      })
-    }
-  })
+  // Analizar categorías con mayor desviación (usando presupuesto real)
+  const categoryAlerts = analyzeCategoryDeviations(transactions, budget)
+  alerts.push(...categoryAlerts)
 
   return alerts.slice(0, 5) // Máximo 5 alertas
 }
 
-// Analizar gastos por categoría vs presupuesto
-interface CategoryAnalysis {
-  categoryId: string
-  categoryName: string
-  actual: number
-  budgeted: number
-  percentOver: number
-}
-
-function analyzeByCategory(transactions: Transaction[]): CategoryAnalysis[] {
+/**
+ * Analizar desviaciones por categoría respecto al presupuesto real
+ */
+function analyzeCategoryDeviations(
+  transactions: Transaction[],
+  budget: Budget
+): BudgetAlert[] {
   const now = new Date()
-  const seasonStartYear = now.getMonth() >= 8 ? now.getFullYear() : now.getFullYear() - 1
-  const seasonStart = new Date(seasonStartYear, 8, 1)
+  const season = computeSeason(now)
+  const dates = getSeasonDates(season)
+  const progress = getSeasonProgress(season)
 
   const expenses = transactions.filter(t =>
     t.type === 'expense' &&
-    new Date(t.date) >= seasonStart &&
+    new Date(t.date) >= dates.start &&
     new Date(t.date) <= now &&
     t.status !== 'rejected'
   )
 
-  // Agrupar por categoría
-  const byCategory: Record<string, { total: number; name: string }> = {}
+  // Agrupar gastos reales por categoría
+  const byCategory: Record<string, number> = {}
   expenses.forEach(t => {
-    if (!byCategory[t.categoryId]) {
-      byCategory[t.categoryId] = { total: 0, name: t.categoryName || 'Sin categoría' }
-    }
-    byCategory[t.categoryId].total += t.amount
+    byCategory[t.categoryId] = (byCategory[t.categoryId] || 0) + t.amount
   })
 
-  // Comparar con presupuesto (simplificado)
-  const annualBudgetMap: Record<string, number> = {
-    cat_001: ANNUAL_BUDGET.expenses.salarios,
-    cat_002: ANNUAL_BUDGET.expenses.seguridadSocial,
-    cat_003: ANNUAL_BUDGET.expenses.equipaciones,
-    cat_005: ANNUAL_BUDGET.expenses.transporte,
-    cat_007: ANNUAL_BUDGET.expenses.arbitrajes,
-    cat_008: ANNUAL_BUDGET.expenses.federacion,
-    cat_012: ANNUAL_BUDGET.expenses.seguros
-  }
+  const alerts: BudgetAlert[] = []
 
-  const currentSeasonMonth = getSeasonMonth(now)
-  const monthsElapsed = currentSeasonMonth
+  // Comparar contra asignaciones del presupuesto real
+  for (const alloc of budget.expenseAllocations) {
+    const actual = byCategory[alloc.categoryId] || 0
+    const budgetedSoFar = alloc.amount * progress
 
-  const results: CategoryAnalysis[] = []
-  Object.entries(byCategory).forEach(([catId, data]) => {
-    const annualBudget = annualBudgetMap[catId]
-    if (annualBudget) {
-      const budgetedSoFar = (annualBudget / 12) * monthsElapsed
-      const percentOver = budgetedSoFar > 0
-        ? ((data.total - budgetedSoFar) / budgetedSoFar) * 100
-        : 0
+    if (budgetedSoFar > 0) {
+      const percentOver = ((actual - budgetedSoFar) / budgetedSoFar) * 100
 
-      if (percentOver > 10) {
-        results.push({
-          categoryId: catId,
-          categoryName: data.name,
-          actual: data.total,
-          budgeted: budgetedSoFar,
-          percentOver: Math.round(percentOver)
+      if (percentOver > 15) {
+        alerts.push({
+          id: `alert_cat_${alloc.categoryId}`,
+          type: 'overspend',
+          severity: percentOver > 30 ? 'critical' : 'warning',
+          categoryId: alloc.categoryId,
+          message: `Categoría con ${Math.round(percentOver)}% por encima del presupuesto`,
+          percentDeviation: Math.round(percentOver),
+          createdAt: now
         })
       }
     }
-  })
+  }
 
-  return results.sort((a, b) => b.percentOver - a.percentOver)
+  return alerts.sort((a, b) => (b.percentDeviation || 0) - (a.percentDeviation || 0))
 }

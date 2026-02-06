@@ -54,14 +54,14 @@ defineProps<NavItemProps>()
 .nav-item {
   display: flex;
   align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-3) var(--space-4);
-  margin: 2px 0;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  margin: 1px 0;
   border-radius: var(--radius-md);
   cursor: pointer;
   transition: all var(--duration-fast) var(--ease-out);
   color: var(--color-text-secondary);
-  min-height: 44px;
+  min-height: 36px;
   user-select: none;
   position: relative;
 
@@ -81,8 +81,8 @@ defineProps<NavItemProps>()
 
   &--mini {
     justify-content: center;
-    padding: var(--space-3);
-    width: 48px;
+    padding: var(--space-2);
+    width: 42px;
     margin: var(--space-1) auto;
 
     .nav-item__icon {
@@ -99,7 +99,7 @@ defineProps<NavItemProps>()
   }
 
   &__label {
-    font-size: 0.875rem;
+    font-size: 0.8125rem;
     font-weight: 500;
     white-space: nowrap;
     overflow: hidden;

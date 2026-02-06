@@ -96,11 +96,12 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { FinancialHealthData, BudgetAlert } from 'src/types'
+import { formatCurrency, formatCurrencyShort } from 'src/utils/formatters'
 
 const props = defineProps<{
   healthData: FinancialHealthData
   alerts?: BudgetAlert[]
-  seasonYear?: number
+  season?: string // e.g., "2024/25"
 }>()
 
 const alerts = computed(() => props.alerts || [])
@@ -108,10 +109,14 @@ const criticalAlerts = computed(() => alerts.value.filter(a => a.severity === 'c
 
 const statusClass = computed(() => `status-${props.healthData.status}`)
 
-// Calculate season label (e.g., "2025-26")
+// Display season label from prop or compute current
 const seasonLabel = computed(() => {
+  if (props.season) {
+    // Convert "2024/25" to "2024-25"
+    return props.season.replace('/', '-')
+  }
   const now = new Date()
-  const year = now.getMonth() >= 8 ? now.getFullYear() : now.getFullYear() - 1
+  const year = now.getMonth() >= 6 ? now.getFullYear() : now.getFullYear() - 1
   return `${year}-${(year + 1).toString().slice(-2)}`
 })
 
@@ -174,20 +179,6 @@ const mainInsight = computed(() => {
   }
 })
 
-function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat('es-ES', {
-    style: 'currency',
-    currency: 'EUR',
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0
-  }).format(amount)
-}
-
-function formatCurrencyShort(value: number): string {
-  if (value >= 1000000) return `${(value / 1000000).toFixed(1)}M€`
-  if (value >= 1000) return `${(value / 1000).toFixed(0)}k€`
-  return `${value}€`
-}
 </script>
 
 <style lang="scss" scoped>

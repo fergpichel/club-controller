@@ -9,7 +9,7 @@
         </q-avatar>
         <div class="q-ml-md">
           <h1>{{ team.name }}</h1>
-          <p class="header-subtitle">{{ team.sport }} {{ team.ageGroup ? `· ${team.ageGroup}` : '' }}</p>
+          <p class="header-subtitle">{{ team.description || '' }} {{ team.ageGroup ? `· ${team.ageGroup}` : '' }}</p>
         </div>
       </div>
     </div>
@@ -77,6 +77,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { useTeamsStore } from 'src/stores/teams';
 import { useTransactionsStore } from 'src/stores/transactions';
 import TransactionItem from 'src/components/TransactionItem.vue';
+import { formatCurrency } from 'src/utils/formatters';
 
 const props = defineProps<{ id?: string }>();
 
@@ -101,14 +102,6 @@ const totalExpenses = computed(() =>
 );
 
 const balance = computed(() => totalIncome.value - totalExpenses.value);
-
-function formatCurrency(value: number): string {
-  return new Intl.NumberFormat('es-ES', {
-    style: 'currency',
-    currency: 'EUR',
-    minimumFractionDigits: 0
-  }).format(value);
-}
 
 function lightenColor(color: string, percent: number): string {
   const num = parseInt(color.replace('#', ''), 16);

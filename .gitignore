@@ -38,3 +38,9 @@ firebase-debug.log
 .env
 .env.local
 .env.*.local
+
+# Firebase emulator data
+emulator-data/
+firebase-debug.log
+firestore-debug.log
+ui-debug.log

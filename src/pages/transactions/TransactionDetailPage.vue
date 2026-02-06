@@ -53,7 +53,7 @@
             </q-item-section>
             <q-item-section>
               <q-item-label caption>Fecha</q-item-label>
-              <q-item-label>{{ formatDate(transaction.date) }}</q-item-label>
+              <q-item-label>{{ formatDateLong(transaction.date) }}</q-item-label>
             </q-item-section>
           </q-item>
 
@@ -259,12 +259,11 @@
 import { ref, computed, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useQuasar } from 'quasar';
-import { format } from 'date-fns';
-import { es } from 'date-fns/locale';
 import { useAuthStore } from 'src/stores/auth';
 import { useTransactionsStore } from 'src/stores/transactions';
 import { useCategoriesStore } from 'src/stores/categories';
 import type { Attachment } from 'src/types';
+import { formatCurrency, formatDateLong, formatDateTime } from 'src/utils/formatters'
 
 const props = defineProps<{
   id?: string;
@@ -328,35 +327,6 @@ const paymentMethodLabel = computed(() => {
   };
   return methods[transaction.value?.paymentMethod || 'other'];
 });
-
-function formatCurrency(value: number): string {
-  return new Intl.NumberFormat('es-ES', {
-    style: 'currency',
-    currency: 'EUR'
-  }).format(value);
-}
-
-function formatDate(date: Date | string | number | undefined | null): string {
-  if (!date) return 'Sin fecha';
-  try {
-    const d = new Date(date);
-    if (isNaN(d.getTime())) return 'Fecha inválida';
-    return format(d, "d 'de' MMMM 'de' yyyy", { locale: es });
-  } catch {
-    return 'Fecha inválida';
-  }
-}
-
-function formatDateTime(date: Date | string | number | undefined | null): string {
-  if (!date) return 'Sin fecha';
-  try {
-    const d = new Date(date);
-    if (isNaN(d.getTime())) return 'Fecha inválida';
-    return format(d, 'd MMM yyyy, HH:mm', { locale: es });
-  } catch {
-    return 'Fecha inválida';
-  }
-}
 
 function getAttachmentIcon(type: string): string {
   if (type.startsWith('image/')) return 'image';

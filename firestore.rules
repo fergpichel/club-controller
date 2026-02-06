@@ -1,0 +1,246 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ──────────────────────────────────────────────
+    // HELPERS
+    // ──────────────────────────────────────────────
+
+    function isAuth() {
+      return request.auth != null;
+    }
+
+    function uid() {
+      return request.auth.uid;
+    }
+
+    function userDoc() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function belongsToClub(clubId) {
+      return isAuth() && userDoc().clubId == clubId;
+    }
+
+    function userRole(clubId) {
+      return belongsToClub(clubId) ? userDoc().role : 'none';
+    }
+
+    function isAdminOrManager(clubId) {
+      return userRole(clubId) in ['admin', 'manager'];
+    }
+
+    function canWrite(clubId) {
+      return userRole(clubId) in ['admin', 'manager', 'controller', 'editor'];
+    }
+
+    function canApprove(clubId) {
+      return userRole(clubId) in ['admin', 'manager', 'controller'];
+    }
+
+    // ──────────────────────────────────────────────
+    // USERS
+    // ──────────────────────────────────────────────
+    match /users/{userId} {
+      // Any authenticated user can read members of their own club.
+      // Users can always read their own document.
+      allow read: if isAuth()
+        && (uid() == userId || userDoc().clubId == resource.data.clubId);
+
+      // User can create their own document during registration
+      allow create: if isAuth() && uid() == userId;
+
+      // Users can update their own profile BUT cannot change role or clubId
+      allow update: if isAuth() && uid() == userId
+        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'clubId']);
+
+      // Admin/manager can update any member in their club (e.g. change role)
+      allow update: if isAuth()
+        && isAdminOrManager(resource.data.clubId);
+
+      // Only admin can delete a member
+      allow delete: if isAuth()
+        && userRole(resource.data.clubId) == 'admin';
+    }
+
+    // ──────────────────────────────────────────────
+    // CLUBS
+    // ──────────────────────────────────────────────
+    match /clubs/{clubId} {
+      allow read: if isAuth() && belongsToClub(clubId);
+
+      // Anyone can create a club (during registration of a new club)
+      allow create: if isAuth();
+
+      // Only admin/manager can update club settings
+      allow update: if isAdminOrManager(clubId);
+
+      allow delete: if false; // Clubs cannot be deleted from client
+    }
+
+    // ──────────────────────────────────────────────
+    // TRANSACTIONS
+    // ──────────────────────────────────────────────
+    match /transactions/{txId} {
+      // All club members can read (employee filtering is done client-side for their own)
+      // Firestore rules cannot filter "only your own" per query, but the employee
+      // client code already filters by createdBy. The data is not truly secret
+      // between club members — the RBAC layer hides it in the UI.
+      allow read: if isAuth() && belongsToClub(resource.data.clubId);
+
+      // Any club member with edit permission can create
+      allow create: if isAuth()
+        && belongsToClub(request.resource.data.clubId)
+        && request.resource.data.createdBy == uid()
+        && userRole(request.resource.data.clubId) in ['admin', 'manager', 'controller', 'editor', 'employee'];
+
+      // Editors+ can update; employees can only update their own pending transactions
+      allow update: if isAuth()
+        && belongsToClub(resource.data.clubId)
+        && (
+          canWrite(resource.data.clubId)
+          || (userRole(resource.data.clubId) == 'employee' && resource.data.createdBy == uid() && resource.data.status == 'pending')
+        );
+
+      // Only admin/manager can delete transactions
+      allow delete: if isAuth() && isAdminOrManager(resource.data.clubId);
+    }
+
+    // ──────────────────────────────────────────────
+    // CATEGORIES
+    // ──────────────────────────────────────────────
+    match /categories/{catId} {
+      allow read: if isAuth() && belongsToClub(resource.data.clubId);
+      allow create: if isAuth() && isAdminOrManager(request.resource.data.clubId);
+      allow update: if isAuth() && isAdminOrManager(resource.data.clubId);
+      allow delete: if isAuth() && isAdminOrManager(resource.data.clubId);
+    }
+
+    // ──────────────────────────────────────────────
+    // TEAMS
+    // ──────────────────────────────────────────────
+    match /teams/{teamId} {
+      allow read: if isAuth() && belongsToClub(resource.data.clubId);
+      allow create: if isAuth() && isAdminOrManager(request.resource.data.clubId);
+      allow update: if isAuth() && isAdminOrManager(resource.data.clubId);
+      allow delete: if isAuth() && isAdminOrManager(resource.data.clubId);
+    }
+
+    // ──────────────────────────────────────────────
+    // PROJECTS
+    // ──────────────────────────────────────────────
+    match /projects/{projectId} {
+      allow read: if isAuth() && belongsToClub(resource.data.clubId);
+      allow create: if isAuth() && isAdminOrManager(request.resource.data.clubId);
+      allow update: if isAuth() && isAdminOrManager(resource.data.clubId);
+      allow delete: if isAuth() && isAdminOrManager(resource.data.clubId);
+    }
+
+    // ──────────────────────────────────────────────
+    // EVENTS
+    // ──────────────────────────────────────────────
+    match /events/{eventId} {
+      allow read: if isAuth() && belongsToClub(resource.data.clubId);
+      allow create: if isAuth() && isAdminOrManager(request.resource.data.clubId);
+      allow update: if isAuth() && isAdminOrManager(resource.data.clubId);
+      allow delete: if isAuth() && isAdminOrManager(resource.data.clubId);
+    }
+
+    // ──────────────────────────────────────────────
+    // BUDGETS
+    // ──────────────────────────────────────────────
+    match /budgets/{budgetId} {
+      allow read: if isAuth() && belongsToClub(resource.data.clubId);
+      allow create: if isAuth() && isAdminOrManager(request.resource.data.clubId);
+      allow update: if isAuth() && isAdminOrManager(resource.data.clubId);
+      allow delete: if isAuth() && isAdminOrManager(resource.data.clubId);
+    }
+
+    // ──────────────────────────────────────────────
+    // FORECASTS
+    // ──────────────────────────────────────────────
+    match /forecasts/{forecastId} {
+      allow read: if isAuth() && belongsToClub(resource.data.clubId);
+      allow create: if isAuth() && isAdminOrManager(request.resource.data.clubId);
+      allow update: if isAuth() && isAdminOrManager(resource.data.clubId);
+      allow delete: if isAuth() && isAdminOrManager(resource.data.clubId);
+    }
+
+    // ──────────────────────────────────────────────
+    // MONTH CLOSINGS
+    // ──────────────────────────────────────────────
+    match /monthClosings/{closingId} {
+      allow read: if isAuth() && belongsToClub(resource.data.clubId);
+
+      // Only admin and controller can close months
+      allow create: if isAuth()
+        && belongsToClub(request.resource.data.clubId)
+        && userRole(request.resource.data.clubId) in ['admin', 'controller'];
+
+      allow update: if isAuth()
+        && belongsToClub(resource.data.clubId)
+        && userRole(resource.data.clubId) in ['admin', 'controller'];
+
+      allow delete: if false; // Closings cannot be deleted
+    }
+
+    // ──────────────────────────────────────────────
+    // INVITATIONS
+    // ──────────────────────────────────────────────
+    match /invitations/{invId} {
+      // Anyone authenticated can read (needed for checking invitations at registration)
+      allow read: if isAuth();
+
+      // Only admin/manager of the club can create invitations
+      allow create: if isAuth()
+        && isAdminOrManager(request.resource.data.clubId);
+
+      // Anyone authenticated can update (to accept their own invitation)
+      allow update: if isAuth()
+        && (resource.data.email == request.auth.token.email
+            || isAdminOrManager(resource.data.clubId));
+
+      // Only admin/manager can delete invitations
+      allow delete: if isAuth()
+        && isAdminOrManager(resource.data.clubId);
+    }
+
+    // ──────────────────────────────────────────────
+    // CATALOGS (age categories, gender options)
+    // ──────────────────────────────────────────────
+    match /ageCategories/{docId} {
+      allow read: if isAuth() && belongsToClub(resource.data.clubId);
+      allow write: if isAuth() && isAdminOrManager(resource.data.clubId);
+    }
+
+    match /genderOptions/{docId} {
+      allow read: if isAuth() && belongsToClub(resource.data.clubId);
+      allow write: if isAuth() && isAdminOrManager(resource.data.clubId);
+    }
+
+    // ──────────────────────────────────────────────
+    // NOTIFICATIONS
+    // ──────────────────────────────────────────────
+    match /notifications/{notifId} {
+      // Users can only read their own notifications
+      allow read: if isAuth() && resource.data.userId == uid();
+
+      // Any authenticated club member can create (system creates on behalf)
+      allow create: if isAuth();
+
+      // Users can only update (mark as read) their own notifications
+      allow update: if isAuth() && resource.data.userId == uid();
+
+      // Users can delete their own notifications
+      allow delete: if isAuth() && resource.data.userId == uid();
+    }
+
+    // ──────────────────────────────────────────────
+    // DENY ALL OTHER COLLECTIONS
+    // ──────────────────────────────────────────────
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

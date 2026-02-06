@@ -19,7 +19,7 @@ export default route(function (/* { store, ssrContext } */) {
     history: createHistory(process.env.VUE_ROUTER_BASE),
   });
 
-  // Navigation guard for authentication
+  // Navigation guard for authentication & authorization
   Router.beforeEach((to, from, next) => {
     const authStore = useAuthStore();
     
@@ -27,34 +27,57 @@ export default route(function (/* { store, ssrContext } */) {
     const publicRoutes = ['login', 'register', 'forgot-password'];
     const isPublicRoute = publicRoutes.includes(to.name as string);
     
-    // If still loading auth state, wait
+    // If still loading auth state, allow
     if (authStore.loading && !isPublicRoute) {
-      // Allow navigation, the auth boot will handle redirect if needed
       next();
       return;
     }
     
-    // If not authenticated and trying to access protected route
+    // Not authenticated → redirect to login
     if (!authStore.isAuthenticated && !isPublicRoute) {
       next({ name: 'login', query: { redirect: to.fullPath } });
       return;
     }
     
-    // If authenticated and trying to access auth pages, redirect to dashboard
+    // Authenticated trying to access auth pages → dashboard
     if (authStore.isAuthenticated && isPublicRoute) {
       next({ name: 'dashboard' });
       return;
     }
     
-    // Check role-based access
-    if (to.meta.requiresManager && !authStore.isManager) {
+    // Role-based access checks
+    if (to.meta.requiresSettings && !authStore.canManageSettings) {
+      next({ name: 'dashboard' });
+      return;
+    }
+
+    if (to.meta.requiresClosings && !authStore.canDoClosings) {
+      next({ name: 'dashboard' });
+      return;
+    }
+
+    // requiresManager: admin, manager, controller, editor (everyone who can see all data)
+    if (to.meta.requiresManager && !authStore.canViewAll) {
       next({ name: 'dashboard' });
       return;
     }
     
-    if (to.meta.requiresAccountant && !authStore.isAccountant && !authStore.isManager) {
+    if (to.meta.requiresAccountant && !authStore.isAccountant && !authStore.canViewAll) {
       next({ name: 'dashboard' });
       return;
+    }
+
+    // Employee can only access: dashboard (their own), transactions, new-transaction, transaction-detail, edit-transaction, settings (profile)
+    if (authStore.isEmployee) {
+      const employeeAllowed = [
+        'dashboard', 'transactions', 'new-transaction',
+        'transaction-detail', 'edit-transaction',
+        'expenses', 'income', 'settings', 'profile'
+      ];
+      if (!employeeAllowed.includes(to.name as string)) {
+        next({ name: 'dashboard' });
+        return;
+      }
     }
     
     next();

@@ -13,9 +13,15 @@ import {
 } from 'firebase/firestore'
 import { db } from 'src/boot/firebase'
 import { useAuthStore } from './auth'
-import { isMockEnabled } from 'src/mocks'
-import { teamsApi, projectsApi, eventsApi } from 'src/services/api'
-import type { Team, Project, Event } from 'src/types'
+import type { Team, Project, Event, Season } from 'src/types'
+import { logger } from 'src/utils/logger'
+
+// Strip undefined values — Firebase rejects them
+function cleanData<T extends Record<string, unknown>>(obj: T): T {
+  return Object.fromEntries(
+    Object.entries(obj).filter(([, v]) => v !== undefined)
+  ) as T
+}
 
 export const useTeamsStore = defineStore('teams', () => {
   // State
@@ -45,17 +51,25 @@ export const useTeamsStore = defineStore('teams', () => {
     return groups
   })
 
+  // Season-filtered getters
+  function getTeamsBySeason(season: Season) {
+    return teams.value.filter(t => t.season === season)
+  }
+
+  function getProjectsBySeason(season: Season) {
+    return projects.value.filter(p => p.season === season)
+  }
+
+  function getEventsBySeason(season: Season) {
+    return events.value.filter(e => e.season === season)
+  }
+
   // Teams Actions
   async function fetchTeams() {
     loading.value = true
     error.value = null
 
     try {
-      if (isMockEnabled()) {
-        teams.value = await teamsApi.getAll()
-        return
-      }
-
       const authStore = useAuthStore()
       if (!authStore.clubId) return
 
@@ -71,7 +85,7 @@ export const useTeamsStore = defineStore('teams', () => {
         createdAt: doc.data().createdAt?.toDate() || new Date()
       })) as Team[]
     } catch (e) {
-      console.error('Error fetching teams:', e)
+      logger.error('Error fetching teams:', e)
       error.value = 'Error al cargar equipos'
     } finally {
       loading.value = false
@@ -83,20 +97,18 @@ export const useTeamsStore = defineStore('teams', () => {
     error.value = null
 
     try {
-      if (isMockEnabled()) {
-        const newTeam = await teamsApi.create({ ...data, clubId: 'mock' })
-        teams.value.push(newTeam)
-        return newTeam
-      }
-
       const authStore = useAuthStore()
       if (!authStore.clubId) return null
+      if (!authStore.canManageSettings) {
+        error.value = 'Sin permisos para crear equipos'
+        return null
+      }
 
-      const docRef = await addDoc(collection(db, 'teams'), {
+      const docRef = await addDoc(collection(db, 'teams'), cleanData({
         ...data,
         clubId: authStore.clubId,
         createdAt: serverTimestamp()
-      })
+      }))
 
       const newTeam: Team = {
         ...data,
@@ -108,7 +120,7 @@ export const useTeamsStore = defineStore('teams', () => {
       teams.value.push(newTeam)
       return newTeam
     } catch (e) {
-      console.error('Error creating team:', e)
+      logger.error('Error creating team:', e)
       error.value = 'Error al crear equipo'
       return null
     } finally {
@@ -121,13 +133,10 @@ export const useTeamsStore = defineStore('teams', () => {
     error.value = null
 
     try {
-      if (isMockEnabled()) {
-        await teamsApi.update(id, data)
-        const index = teams.value.findIndex(t => t.id === id)
-        if (index !== -1) {
-          teams.value[index] = { ...teams.value[index], ...data }
-        }
-        return true
+      const authStore = useAuthStore()
+      if (!authStore.canManageSettings) {
+        error.value = 'Sin permisos para editar equipos'
+        return false
       }
 
       await updateDoc(doc(db, 'teams', id), {
@@ -142,7 +151,7 @@ export const useTeamsStore = defineStore('teams', () => {
 
       return true
     } catch (e) {
-      console.error('Error updating team:', e)
+      logger.error('Error updating team:', e)
       error.value = 'Error al actualizar equipo'
       return false
     } finally {
@@ -155,17 +164,17 @@ export const useTeamsStore = defineStore('teams', () => {
     error.value = null
 
     try {
-      if (isMockEnabled()) {
-        await teamsApi.delete(id)
-        teams.value = teams.value.filter(t => t.id !== id)
-        return true
+      const authStore = useAuthStore()
+      if (!authStore.canManageSettings) {
+        error.value = 'Sin permisos para eliminar equipos'
+        return false
       }
 
       await deleteDoc(doc(db, 'teams', id))
       teams.value = teams.value.filter(t => t.id !== id)
       return true
     } catch (e) {
-      console.error('Error deleting team:', e)
+      logger.error('Error deleting team:', e)
       error.value = 'Error al eliminar equipo'
       return false
     } finally {
@@ -179,11 +188,6 @@ export const useTeamsStore = defineStore('teams', () => {
     error.value = null
 
     try {
-      if (isMockEnabled()) {
-        projects.value = await projectsApi.getAll()
-        return
-      }
-
       const authStore = useAuthStore()
       if (!authStore.clubId) return
 
@@ -201,7 +205,7 @@ export const useTeamsStore = defineStore('teams', () => {
         createdAt: doc.data().createdAt?.toDate() || new Date()
       })) as Project[]
     } catch (e) {
-      console.error('Error fetching projects:', e)
+      logger.error('Error fetching projects:', e)
       error.value = 'Error al cargar proyectos'
     } finally {
       loading.value = false
@@ -213,22 +217,20 @@ export const useTeamsStore = defineStore('teams', () => {
     error.value = null
 
     try {
-      if (isMockEnabled()) {
-        const newProject = await projectsApi.create({ ...data, clubId: 'mock' })
-        projects.value.push(newProject)
-        return newProject
-      }
-
       const authStore = useAuthStore()
       if (!authStore.clubId) return null
+      if (!authStore.canManageSettings) {
+        error.value = 'Sin permisos para crear proyectos'
+        return null
+      }
 
-      const docRef = await addDoc(collection(db, 'projects'), {
+      const docRef = await addDoc(collection(db, 'projects'), cleanData({
         ...data,
         clubId: authStore.clubId,
         startDate: data.startDate,
         endDate: data.endDate || null,
         createdAt: serverTimestamp()
-      })
+      }))
 
       const newProject: Project = {
         ...data,
@@ -240,7 +242,7 @@ export const useTeamsStore = defineStore('teams', () => {
       projects.value.push(newProject)
       return newProject
     } catch (e) {
-      console.error('Error creating project:', e)
+      logger.error('Error creating project:', e)
       error.value = 'Error al crear proyecto'
       return null
     } finally {
@@ -253,13 +255,10 @@ export const useTeamsStore = defineStore('teams', () => {
     error.value = null
 
     try {
-      if (isMockEnabled()) {
-        await projectsApi.update(id, data)
-        const index = projects.value.findIndex(p => p.id === id)
-        if (index !== -1) {
-          projects.value[index] = { ...projects.value[index], ...data }
-        }
-        return true
+      const authStore = useAuthStore()
+      if (!authStore.canManageSettings) {
+        error.value = 'Sin permisos para editar proyectos'
+        return false
       }
 
       await updateDoc(doc(db, 'projects', id), {
@@ -274,7 +273,7 @@ export const useTeamsStore = defineStore('teams', () => {
 
       return true
     } catch (e) {
-      console.error('Error updating project:', e)
+      logger.error('Error updating project:', e)
       error.value = 'Error al actualizar proyecto'
       return false
     } finally {
@@ -288,11 +287,6 @@ export const useTeamsStore = defineStore('teams', () => {
     error.value = null
 
     try {
-      if (isMockEnabled()) {
-        events.value = await eventsApi.getAll()
-        return
-      }
-
       const authStore = useAuthStore()
       if (!authStore.clubId) return
 
@@ -310,7 +304,7 @@ export const useTeamsStore = defineStore('teams', () => {
         createdAt: doc.data().createdAt?.toDate() || new Date()
       })) as Event[]
     } catch (e) {
-      console.error('Error fetching events:', e)
+      logger.error('Error fetching events:', e)
       error.value = 'Error al cargar eventos'
     } finally {
       loading.value = false
@@ -322,20 +316,18 @@ export const useTeamsStore = defineStore('teams', () => {
     error.value = null
 
     try {
-      if (isMockEnabled()) {
-        const newEvent = await eventsApi.create({ ...data, clubId: 'mock' })
-        events.value.push(newEvent)
-        return newEvent
-      }
-
       const authStore = useAuthStore()
       if (!authStore.clubId) return null
+      if (!authStore.canManageSettings) {
+        error.value = 'Sin permisos para crear eventos'
+        return null
+      }
 
-      const docRef = await addDoc(collection(db, 'events'), {
+      const docRef = await addDoc(collection(db, 'events'), cleanData({
         ...data,
         clubId: authStore.clubId,
         createdAt: serverTimestamp()
-      })
+      }))
 
       const newEvent: Event = {
         ...data,
@@ -347,7 +339,7 @@ export const useTeamsStore = defineStore('teams', () => {
       events.value.push(newEvent)
       return newEvent
     } catch (e) {
-      console.error('Error creating event:', e)
+      logger.error('Error creating event:', e)
       error.value = 'Error al crear evento'
       return null
     } finally {
@@ -360,13 +352,10 @@ export const useTeamsStore = defineStore('teams', () => {
     error.value = null
 
     try {
-      if (isMockEnabled()) {
-        await eventsApi.update(id, data)
-        const index = events.value.findIndex(e => e.id === id)
-        if (index !== -1) {
-          events.value[index] = { ...events.value[index], ...data }
-        }
-        return true
+      const authStore = useAuthStore()
+      if (!authStore.canManageSettings) {
+        error.value = 'Sin permisos para editar eventos'
+        return false
       }
 
       await updateDoc(doc(db, 'events', id), {
@@ -381,12 +370,48 @@ export const useTeamsStore = defineStore('teams', () => {
 
       return true
     } catch (e) {
-      console.error('Error updating event:', e)
+      logger.error('Error updating event:', e)
       error.value = 'Error al actualizar evento'
       return false
     } finally {
       loading.value = false
     }
+  }
+
+  // Copy teams from one season to another
+  async function copyTeamsFromSeason(fromSeason: Season, toSeason: Season): Promise<number> {
+    const authStore = useAuthStore()
+    if (!authStore.clubId) return 0
+
+    const sourceTeams = teams.value.filter(t => t.season === fromSeason && t.isActive)
+    let copied = 0
+
+    for (const team of sourceTeams) {
+      // Check if team with same name already exists in target season
+      const exists = teams.value.some(
+        t => t.season === toSeason && t.name === team.name
+      )
+      if (exists) continue
+
+      const newTeamData: Omit<Team, 'id' | 'clubId' | 'createdAt'> = {
+        season: toSeason,
+        name: team.name,
+        description: team.description,
+        ageCategoryId: team.ageCategoryId,
+        genderOptionId: team.genderOptionId,
+        ageGroup: team.ageGroup,
+        gender: team.gender,
+        color: team.color,
+        coachId: team.coachId,
+        playersCount: 0,
+        isActive: true
+      }
+
+      await createTeam(newTeamData)
+      copied++
+    }
+
+    return copied
   }
 
   // Getters by ID
@@ -424,6 +449,12 @@ export const useTeamsStore = defineStore('teams', () => {
     activeProjects,
     upcomingEvents,
     teamsByAgeGroup,
+
+    // Season helpers
+    getTeamsBySeason,
+    getProjectsBySeason,
+    getEventsBySeason,
+    copyTeamsFromSeason,
 
     // Team Actions
     fetchTeams,

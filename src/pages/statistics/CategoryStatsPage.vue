@@ -206,7 +206,7 @@
               <q-item-section>
                 <q-item-label>{{ txn.description }}</q-item-label>
                 <q-item-label caption>
-                  {{ getSubcategoryName(txn.categoryId) }} · {{ formatDate(txn.date) }}
+                  {{ getSubcategoryName(txn.categoryId) }} · {{ formatDateCompact(txn.date) }}
                 </q-item-label>
               </q-item-section>
               <q-item-section side>
@@ -244,6 +244,7 @@ import {
 } from 'chart.js'
 import { useCategoriesStore } from 'src/stores/categories'
 import { useTransactionsStore } from 'src/stores/transactions'
+import { formatCurrency, formatDateCompact } from 'src/utils/formatters'
 
 ChartJS.register(ArcElement, BarElement, Tooltip, Legend, LineElement, CategoryScale, LinearScale, PointElement, Filler)
 
@@ -700,13 +701,6 @@ const barChartOptions = {
 }
 
 // Helpers
-function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(amount)
-}
-
-function formatDate(date: string | Date): string {
-  return new Date(date).toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })
-}
 
 function getSubcategoryName(categoryId: string): string {
   const cat = categoriesStore.getCategoryById(categoryId)

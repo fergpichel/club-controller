@@ -122,7 +122,7 @@ const routes: RouteRecordRaw[] = [
         path: 'closings', 
         name: 'closings',
         component: () => import('src/pages/closings/MonthClosingsPage.vue'),
-        meta: { requiresManager: true }
+        meta: { requiresClosings: true }
       },
       { 
         path: 'closings/:year/:month', 
@@ -145,52 +145,6 @@ const routes: RouteRecordRaw[] = [
         meta: { requiresAccountant: true }
       },
 
-      // Teams
-      { 
-        path: 'teams', 
-        name: 'teams',
-        component: () => import('src/pages/teams/TeamsPage.vue')
-      },
-      { 
-        path: 'teams/:id', 
-        name: 'team-detail',
-        component: () => import('src/pages/teams/TeamDetailPage.vue'),
-        props: true
-      },
-
-      // Projects
-      { 
-        path: 'projects', 
-        name: 'projects',
-        component: () => import('src/pages/projects/ProjectsPage.vue')
-      },
-      { 
-        path: 'projects/:id', 
-        name: 'project-detail',
-        component: () => import('src/pages/projects/ProjectDetailPage.vue'),
-        props: true
-      },
-
-      // Events
-      { 
-        path: 'events', 
-        name: 'events',
-        component: () => import('src/pages/events/EventsPage.vue')
-      },
-      { 
-        path: 'events/:id', 
-        name: 'event-detail',
-        component: () => import('src/pages/events/EventDetailPage.vue'),
-        props: true
-      },
-
-      // Categories
-      { 
-        path: 'categories', 
-        name: 'categories',
-        component: () => import('src/pages/settings/CategoriesPage.vue'),
-        meta: { requiresManager: true }
-      },
 
       // Forecasts
       { 
@@ -213,6 +167,69 @@ const routes: RouteRecordRaw[] = [
         path: 'settings', 
         name: 'settings',
         component: () => import('src/pages/settings/SettingsPage.vue')
+      },
+      {
+        path: 'settings/budget',
+        name: 'budget',
+        component: () => import('src/pages/settings/BudgetPage.vue'),
+        meta: { requiresSettings: true }
+      },
+      {
+        path: 'settings/categories',
+        name: 'categories',
+        component: () => import('src/pages/settings/CategoriesPage.vue'),
+        meta: { requiresSettings: true }
+      },
+      {
+        path: 'settings/teams',
+        name: 'teams',
+        component: () => import('src/pages/teams/TeamsPage.vue'),
+        meta: { requiresSettings: true }
+      },
+      {
+        path: 'settings/teams/:id',
+        name: 'team-detail',
+        component: () => import('src/pages/teams/TeamDetailPage.vue'),
+        props: true,
+        meta: { requiresSettings: true }
+      },
+      {
+        path: 'settings/events',
+        name: 'events',
+        component: () => import('src/pages/events/EventsPage.vue'),
+        meta: { requiresSettings: true }
+      },
+      {
+        path: 'settings/events/:id',
+        name: 'event-detail',
+        component: () => import('src/pages/events/EventDetailPage.vue'),
+        props: true,
+        meta: { requiresSettings: true }
+      },
+      {
+        path: 'settings/projects',
+        name: 'projects',
+        component: () => import('src/pages/projects/ProjectsPage.vue'),
+        meta: { requiresSettings: true }
+      },
+      {
+        path: 'settings/projects/:id',
+        name: 'project-detail',
+        component: () => import('src/pages/projects/ProjectDetailPage.vue'),
+        props: true,
+        meta: { requiresSettings: true }
+      },
+      {
+        path: 'settings/import',
+        name: 'import-data',
+        component: () => import('src/pages/settings/ImportDataPage.vue'),
+        meta: { requiresSettings: true }
+      },
+      {
+        path: 'settings/members',
+        name: 'members',
+        component: () => import('src/pages/settings/MembersPage.vue'),
+        meta: { requiresSettings: true }
       },
       { 
         path: 'profile', 

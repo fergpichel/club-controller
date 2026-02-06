@@ -1,5 +1,23 @@
 // === USER & AUTH TYPES ===
-export type UserRole = 'admin' | 'manager' | 'employee' | 'accountant'
+/**
+ * Roles del sistema:
+ * - admin:      Administrador — acceso total, settings, cierres, datos sensibles
+ * - manager:    Directivo — acceso total excepto cierres, gestiona settings y categorías sensibles
+ * - controller: Interventor — acceso total excepto settings, puede hacer cierres
+ * - editor:     Coordinador — CRUD transacciones, ve todo pero datos sensibles anonimizados
+ * - employee:   Colaborador — solo crea transacciones y ve las suyas propias
+ * - viewer:     Observador — solo lectura, datos sensibles anonimizados
+ */
+export type UserRole = 'admin' | 'manager' | 'controller' | 'editor' | 'employee' | 'viewer'
+
+export const ROLE_LABELS: Record<UserRole, string> = {
+  admin: 'Administrador',
+  manager: 'Directivo',
+  controller: 'Interventor',
+  editor: 'Coordinador',
+  employee: 'Colaborador',
+  viewer: 'Observador'
+}
 
 export interface User {
   uid: string
@@ -8,8 +26,23 @@ export interface User {
   photoURL?: string
   role: UserRole
   clubId: string
+  invitedBy?: string   // uid of the user who invited this user
   createdAt: Date
   updatedAt: Date
+}
+
+/** Invitation to join a club */
+export interface ClubInvitation {
+  id: string
+  clubId: string
+  clubName: string
+  email: string        // Invited email
+  role: UserRole       // Role to assign
+  invitedBy: string    // uid
+  invitedByName: string
+  status: 'pending' | 'accepted' | 'expired'
+  createdAt: Date
+  expiresAt: Date
 }
 
 export interface Club {
@@ -42,7 +75,30 @@ export interface Category {
   icon: string
   color: string
   parentId?: string
+  isSensitive?: boolean  // Solo visible para admin/manager/controller
   isActive: boolean
+}
+
+// === SETTINGS CATALOGS (transversal, sin temporada) ===
+
+/** Categoría de edad gestionada en Settings */
+export interface AgeCategory {
+  id: string
+  clubId: string
+  name: string        // "Juvenil", "Cadete", "Infantil", "Senior", etc.
+  order: number       // Para ordenar en selectores
+  isActive: boolean
+  createdAt: Date
+}
+
+/** Género gestionado en Settings */
+export interface GenderOption {
+  id: string
+  clubId: string
+  name: string        // "Masculino", "Femenino", "Mixto"
+  order: number
+  isActive: boolean
+  createdAt: Date
 }
 
 // === TEAMS ===
@@ -52,12 +108,15 @@ export type AgeGroup = 'biberon' | 'prebenjamin' | 'benjamin' | 'alevin' | 'infa
 export interface Team {
   id: string
   clubId: string
-  name: string // Nombre comercial/patrocinador (ej: "Calvo Xiria")
-  sport: string
-  ageGroup: AgeGroup
-  gender: TeamGender
+  season: Season       // Temporada a la que pertenece
+  name: string         // Nombre comercial/patrocinador (ej: "Calvo Xiria")
+  description?: string
+  ageCategoryId?: string  // Referencia a AgeCategory de Settings
+  genderOptionId?: string // Referencia a GenderOption de Settings
+  ageGroup: AgeGroup      // Legacy / fallback
+  gender: TeamGender      // Legacy / fallback
   color: string
-  coachId?: string // employeeId
+  coachId?: string        // employeeId
   playersCount?: number
   isActive: boolean
   createdAt: Date
@@ -67,6 +126,7 @@ export interface Team {
 export interface Project {
   id: string
   clubId: string
+  season: Season       // Temporada a la que pertenece
   name: string
   description?: string
   startDate: Date
@@ -74,7 +134,7 @@ export interface Project {
   budget?: number
   status: 'active' | 'completed' | 'cancelled'
   teamIds?: string[]
-  managerId?: string // employeeId
+  managerId?: string   // employeeId
   createdAt: Date
 }
 
@@ -82,6 +142,7 @@ export interface Project {
 export interface Event {
   id: string
   clubId: string
+  season: Season       // Temporada a la que pertenece
   name: string
   description?: string
   date: Date
@@ -180,10 +241,126 @@ export interface Allocation {
   amount?: number // Calculated: transaction.amount * percentage / 100
 }
 
+// === SEASONS ===
+// Season format: "2024/25" (starts July, ends June)
+export type Season = string // e.g. "2024/25"
+
+/**
+ * Compute season from a date.
+ * Jul-Dec → startYear/endYear, Jan-Jun → (year-1)/year
+ * Can be overridden manually on the transaction.
+ */
+export function computeSeason(date: Date): Season {
+  const year = date.getFullYear()
+  const month = date.getMonth() + 1 // 1-12
+  if (month >= 7) {
+    return `${year}/${String(year + 1).slice(-2)}`
+  }
+  return `${year - 1}/${String(year).slice(-2)}`
+}
+
+/**
+ * Get season start/end dates
+ */
+export function getSeasonDates(season: Season): { start: Date; end: Date } {
+  const startYear = parseInt(season.split('/')[0])
+  return {
+    start: new Date(startYear, 6, 1), // July 1
+    end: new Date(startYear + 1, 5, 30, 23, 59, 59) // June 30
+  }
+}
+
+/**
+ * Generate season options for selectors
+ */
+export function getSeasonOptions(count = 5): { label: string; value: Season }[] {
+  const now = new Date()
+  const currentSeason = computeSeason(now)
+  const currentStartYear = parseInt(currentSeason.split('/')[0])
+  const options: { label: string; value: Season }[] = []
+  for (let i = count - 1; i >= -1; i--) {
+    const y = currentStartYear - i
+    const season = `${y}/${String(y + 1).slice(-2)}`
+    options.push({ label: `Temporada ${season}`, value: season })
+  }
+  return options
+}
+
+// === SEARCH KEYWORDS ===
+
+/**
+ * Normalize text for search: lowercase, remove accents, trim
+ */
+function normalizeText(text: string): string {
+  return text
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '') // remove diacritics
+    .trim()
+}
+
+/**
+ * Generate search keywords from a transaction's fields.
+ * Stores both full words AND prefix substrings (min 3 chars)
+ * so users can find "Farmacia" by typing "farm".
+ *
+ * Firestore array-contains matches ONE element exactly,
+ * so we store prefixes to enable partial matching.
+ *
+ * Example: "Farmacia López" →
+ *   ["far", "farm", "farma", "farmac", "farmaci", "farmacia",
+ *    "lop", "lope", "lopez"]
+ */
+export function generateSearchKeywords(fields: {
+  description: string
+  categoryName?: string
+  teamName?: string
+  supplierName?: string
+  sponsorName?: string
+  reference?: string
+  invoiceNumber?: string
+  notes?: string
+}): string[] {
+  const keywords = new Set<string>()
+
+  // Collect all searchable text
+  const texts = [
+    fields.description,
+    fields.categoryName,
+    fields.teamName,
+    fields.supplierName,
+    fields.sponsorName,
+    fields.reference,
+    fields.invoiceNumber,
+    fields.notes
+  ].filter(Boolean) as string[]
+
+  for (const text of texts) {
+    const normalized = normalizeText(text)
+    // Split into words
+    const words = normalized.split(/[\s\-_/.,;:]+/).filter(w => w.length >= 2)
+
+    for (const word of words) {
+      // Add the full word
+      keywords.add(word)
+      // Add prefixes (min 3 chars) for partial matching
+      for (let len = 3; len < word.length; len++) {
+        keywords.add(word.substring(0, len))
+      }
+    }
+  }
+
+  // Limit to 200 entries to stay within Firestore array limits
+  return Array.from(keywords).slice(0, 200)
+}
+
 // === TRANSACTIONS ===
 export type TransactionType = 'income' | 'expense'
 export type TransactionStatus = 'pending' | 'approved' | 'rejected' | 'paid'
 export type PaymentMethod = 'cash' | 'bank_transfer' | 'card' | 'check' | 'direct_debit' | 'other'
+
+// Well-known category ID for uncategorized transactions
+export const UNCATEGORIZED_CATEGORY_ID = '__uncategorized__'
 
 export interface Transaction {
   id: string
@@ -193,6 +370,9 @@ export interface Transaction {
   description: string
   categoryId: string
   categoryName?: string
+  
+  // Season (e.g. "2024/25") — auto-computed from date, but overrideable
+  season?: Season
   
   // Simple assignment (backward compatible)
   teamId?: string
@@ -218,9 +398,15 @@ export interface Transaction {
   // Financial details
   date: Date
   dueDate?: Date // Fecha de vencimiento
+  paidDate?: Date // Fecha real de cobro/pago
   paymentMethod: PaymentMethod
   reference?: string
   invoiceNumber?: string
+  
+  // Tax breakdown
+  baseAmount?: number // Importe base (sin IVA)
+  taxRate?: number // Porcentaje de IVA (ej: 21)
+  taxAmount?: number // Importe del IVA
   
   // For recurring (salaries, subscriptions)
   isRecurring?: boolean
@@ -239,6 +425,9 @@ export interface Transaction {
   // Timestamps
   createdAt: Date
   updatedAt: Date
+  
+  // Search
+  searchKeywords?: string[]
   
   // Month closing
   monthClosed?: boolean
@@ -293,9 +482,11 @@ export interface MonthClosing {
 export interface Forecast {
   id: string
   clubId: string
+  season: Season
   year: number
   month: number
   categoryId: string
+  categoryName?: string
   type: TransactionType
   amount: number
   source: 'historical' | 'manual'
@@ -307,20 +498,18 @@ export interface Forecast {
 export interface Budget {
   id: string
   clubId: string
+  season: Season          // '2025/26'
   name: string
-  year: number
-  teamId?: string
-  projectId?: string
-  allocations: BudgetAllocation[]
-  totalBudget: number
+  targetSurplus: number   // Objetivo de superávit
+  incomeAllocations: BudgetAllocation[]
+  expenseAllocations: BudgetAllocation[]
   createdAt: Date
   updatedAt: Date
 }
 
 export interface BudgetAllocation {
   categoryId: string
-  amount: number
-  spent: number
+  amount: number          // Presupuesto anual para esta categoría
 }
 
 // === FILTERS & QUERIES ===
@@ -338,6 +527,8 @@ export interface TransactionFilters {
   dateTo?: Date
   searchQuery?: string
   paymentMethod?: PaymentMethod
+  season?: Season
+  uncategorized?: boolean // Filter only uncategorized transactions
 }
 
 export interface DateRange {

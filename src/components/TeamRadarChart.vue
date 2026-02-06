@@ -122,6 +122,7 @@ import {
 } from 'chart.js'
 import { useTransactionsStore } from 'src/stores/transactions'
 import { useTeamsStore } from 'src/stores/teams'
+import { formatCurrency } from 'src/utils/formatters'
 
 ChartJS.register(RadialLinearScale, PointElement, LineElement, Filler, Tooltip, Legend)
 
@@ -358,15 +359,6 @@ const insights = computed(() => {
   return result
 })
 
-function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat('es-ES', {
-    style: 'currency',
-    currency: 'EUR',
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0
-  }).format(amount)
-}
-
 // Auto-select top 3 teams on mount
 watch(() => teamOptions.value, (options) => {
   if (options.length > 0 && selectedTeams.value.length === 0) {
@@ -375,10 +367,8 @@ watch(() => teamOptions.value, (options) => {
 }, { immediate: true })
 
 onMounted(async () => {
-  await Promise.all([
-    transactionsStore.fetchTransactions({}),
-    teamsStore.fetchTeams()
-  ])
+  // Transactions are loaded by parent page; only fetch teams here
+  await teamsStore.fetchTeams()
 })
 </script>
 

@@ -116,6 +116,7 @@
 import { computed } from 'vue'
 import { format, getDaysInMonth, differenceInDays, endOfMonth } from 'date-fns'
 import { es } from 'date-fns/locale'
+import { formatCurrency } from 'src/utils/formatters'
 
 const props = defineProps<{
   actualIncome: number
@@ -231,14 +232,6 @@ const insight = computed(() => {
   }
 })
 
-function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat('es-ES', {
-    style: 'currency',
-    currency: 'EUR',
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0
-  }).format(amount)
-}
 </script>
 
 <style lang="scss" scoped>

@@ -72,7 +72,7 @@
             >
               <q-tooltip v-if="day.date && !day.isFuture" :delay="200">
                 <div class="tooltip-content">
-                  <strong>{{ formatDate(day.date) }}</strong>
+                  <strong>{{ formatDateHeatmap(day.date) }}</strong>
                   <div v-if="viewMode === 'amount'">
                     <span class="text-positive">+{{ formatCurrency(day.income) }}</span>
                     <span class="text-negative">-{{ formatCurrency(day.expenses) }}</span>
@@ -114,21 +114,25 @@
 import { ref, computed } from 'vue'
 import { 
   endOfWeek, eachDayOfInterval, eachWeekOfInterval,
-  format, subMonths, isSameDay, isAfter, startOfDay
+  format, isSameDay, isAfter, startOfDay
 } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { useTransactionsStore } from 'src/stores/transactions'
+import { computeSeason, getSeasonDates } from 'src/types'
+import { formatCurrency, formatCurrencyShort, formatDateHeatmap } from 'src/utils/formatters'
 
 interface Props {
   title?: string
   subtitle?: string
   months?: number
+  season?: string
 }
 
 const props = withDefaults(defineProps<Props>(), {
   title: 'Actividad Financiera',
-  subtitle: 'Movimientos de los últimos meses',
-  months: 6
+  subtitle: 'Movimientos de la temporada',
+  months: 6,
+  season: ''
 })
 
 const transactionsStore = useTransactionsStore()
@@ -145,11 +149,17 @@ interface DayData {
   isFuture: boolean
 }
 
-// Calculate date range
+// Determine season to use
+const effectiveSeason = computed(() => props.season || computeSeason(new Date()))
+
+// Calculate date range: from season start to today (or season end, whichever is earlier)
 const dateRange = computed(() => {
-  const end = new Date()
-  const start = subMonths(end, props.months)
-  return { start, end }
+  const dates = getSeasonDates(effectiveSeason.value)
+  const now = new Date()
+  return {
+    start: dates.start,
+    end: now < dates.end ? now : dates.end
+  }
 })
 
 // Group transactions by day
@@ -277,26 +287,6 @@ const avgDailyVolume = computed(() => {
   })
   return activeDays.value > 0 ? totalVolume / activeDays.value : 0
 })
-
-function formatDate(date: Date): string {
-  return format(date, "d 'de' MMMM, yyyy", { locale: es })
-}
-
-function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat('es-ES', {
-    style: 'currency',
-    currency: 'EUR',
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0
-  }).format(amount)
-}
-
-function formatCurrencyShort(amount: number): string {
-  if (amount >= 1000) {
-    return `${(amount / 1000).toFixed(1).replace('.0', '')}k€`
-  }
-  return `${Math.round(amount)}€`
-}
 
 // Data is fetched by parent component
 </script>

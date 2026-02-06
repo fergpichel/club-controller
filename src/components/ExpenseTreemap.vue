@@ -49,7 +49,7 @@
 
     <!-- Legend / Details -->
     <div class="treemap-legend">
-      <div class="legend-item" v-for="category in sortedCategories.slice(0, 6)" :key="'legend-' + category.id">
+      <div v-for="category in sortedCategories.slice(0, 6)" :key="'legend-' + category.id" class="legend-item">
         <span class="legend-color" :style="{ background: category.color }"></span>
         <span class="legend-name">{{ category.name }}</span>
         <span class="legend-value">{{ category.percent.toFixed(1) }}%</span>
@@ -79,6 +79,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useTransactionsStore } from 'src/stores/transactions'
 import { useCategoriesStore } from 'src/stores/categories'
+import { formatCurrency, formatCurrencyShort } from 'src/utils/formatters'
 
 withDefaults(defineProps<{
   title?: string
@@ -219,27 +220,9 @@ function getCategoryColor(categoryId: string): string {
   return parentData?.color || '#8898AA'
 }
 
-function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat('es-ES', {
-    style: 'currency',
-    currency: 'EUR',
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0
-  }).format(amount)
-}
-
-function formatCurrencyShort(amount: number): string {
-  if (amount >= 1000) {
-    return `${(amount / 1000).toFixed(1).replace('.0', '')}k€`
-  }
-  return `${Math.round(amount)}€`
-}
-
 onMounted(async () => {
-  await Promise.all([
-    transactionsStore.fetchTransactions({}),
-    categoriesStore.fetchCategories()
-  ])
+  // Transactions are loaded by parent page; only fetch categories here
+  await categoriesStore.fetchCategories()
 })
 </script>
 

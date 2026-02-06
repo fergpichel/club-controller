@@ -9,8 +9,9 @@
         </div>
         <q-btn
           v-if="!$q.screen.lt.md"
-          color="white"
-          text-color="primary"
+          unelevated
+          color="primary"
+          text-color="white"
           icon="add"
           label="Nueva"
           @click="showTypeDialog = true"
@@ -20,92 +21,96 @@
 
     <div class="page-content q-pa-md">
       <!-- Filters -->
-      <q-card class="filter-card q-mb-md">
-        <q-card-section class="q-pa-sm">
-          <div class="row q-col-gutter-sm items-center">
-            <!-- Search -->
-            <div class="col-12 col-sm-4">
-              <q-input
-                v-model="searchQuery"
-                dense
-                outlined
-                placeholder="Buscar..."
-                clearable
+      <div class="filter-bar q-mb-md">
+        <div class="filter-row">
+          <!-- Search -->
+          <q-input
+            v-model="searchQuery"
+            dense
+            outlined
+            placeholder="Buscar..."
+            clearable
+            class="filter-search"
+          >
+            <template #prepend>
+              <q-icon name="search" />
+            </template>
+          </q-input>
+
+          <!-- Type filter -->
+          <q-select
+            v-model="filterType"
+            dense
+            outlined
+            :options="typeOptions"
+            emit-value
+            map-options
+            clearable
+            label="Tipo"
+            class="filter-select"
+          />
+
+          <!-- Category filter -->
+          <q-select
+            v-model="filterCategory"
+            dense
+            outlined
+            :options="categoryOptions"
+            emit-value
+            map-options
+            clearable
+            label="Categoría"
+            class="filter-select"
+          />
+
+          <!-- Team filter -->
+          <q-select
+            v-model="filterTeam"
+            dense
+            outlined
+            :options="teamOptions"
+            emit-value
+            map-options
+            clearable
+            label="Equipo"
+            class="filter-select"
+          />
+
+          <!-- Season filter -->
+          <q-select
+            v-model="filterSeason"
+            dense
+            outlined
+            :options="seasonOptions"
+            emit-value
+            map-options
+            clearable
+            label="Temporada"
+            class="filter-select"
+          />
+
+          <!-- Date range -->
+          <q-btn
+            outline
+            dense
+            icon="date_range"
+            class="filter-date-btn"
+          >
+            <q-popup-proxy cover transition-show="scale" transition-hide="scale">
+              <q-date
+                v-model="dateRange"
+                range
+                mask="YYYY-MM-DD"
               >
-                <template #prepend>
-                  <q-icon name="search" />
-                </template>
-              </q-input>
-            </div>
-
-            <!-- Type filter -->
-            <div class="col-6 col-sm-2">
-              <q-select
-                v-model="filterType"
-                dense
-                outlined
-                :options="typeOptions"
-                emit-value
-                map-options
-                clearable
-                placeholder="Tipo"
-              />
-            </div>
-
-            <!-- Category filter -->
-            <div class="col-6 col-sm-2">
-              <q-select
-                v-model="filterCategory"
-                dense
-                outlined
-                :options="categoryOptions"
-                emit-value
-                map-options
-                clearable
-                placeholder="Categoría"
-              />
-            </div>
-
-            <!-- Team filter -->
-            <div class="col-6 col-sm-2">
-              <q-select
-                v-model="filterTeam"
-                dense
-                outlined
-                :options="teamOptions"
-                emit-value
-                map-options
-                clearable
-                placeholder="Equipo"
-              />
-            </div>
-
-            <!-- Date range -->
-            <div class="col-6 col-sm-2">
-              <q-btn
-                outline
-                dense
-                color="grey-7"
-                icon="date_range"
-                :label="dateRangeLabel"
-                class="full-width"
-              >
-                <q-popup-proxy cover transition-show="scale" transition-hide="scale">
-                  <q-date
-                    v-model="dateRange"
-                    range
-                    mask="YYYY-MM-DD"
-                  >
-                    <div class="row items-center justify-end">
-                      <q-btn v-close-popup label="Cerrar" color="primary" flat />
-                    </div>
-                  </q-date>
-                </q-popup-proxy>
-              </q-btn>
-            </div>
-          </div>
-        </q-card-section>
-      </q-card>
+                <div class="row items-center justify-end">
+                  <q-btn v-close-popup label="Cerrar" color="primary" flat />
+                </div>
+              </q-date>
+            </q-popup-proxy>
+            <q-tooltip>{{ dateRangeLabel }}</q-tooltip>
+          </q-btn>
+        </div>
+      </div>
 
       <!-- Quick tabs -->
       <q-tabs
@@ -122,10 +127,19 @@
         <q-tab v-if="authStore.canApprove" name="pending" label="Pendientes">
           <q-badge v-if="pendingCount > 0" color="warning" floating>{{ pendingCount }}</q-badge>
         </q-tab>
+        <q-tab name="uncategorized" label="Sin categorizar">
+          <q-badge v-if="uncategorizedCount > 0" color="amber" floating>{{ uncategorizedCount }}</q-badge>
+        </q-tab>
       </q-tabs>
 
+      <!-- Loading state -->
+      <div v-if="isLoading && filteredTransactions.length === 0" class="loading-state">
+        <q-spinner-dots size="40px" color="primary" />
+        <p>Cargando transacciones...</p>
+      </div>
+
       <!-- Transactions List -->
-      <div v-if="filteredTransactions.length > 0">
+      <div v-else-if="filteredTransactions.length > 0">
         <TransactionItem
           v-for="transaction in filteredTransactions"
           :key="transaction.id"
@@ -134,19 +148,19 @@
         />
 
         <!-- Load more -->
-        <div v-if="transactionsStore.hasMore" class="text-center q-mt-md">
+        <div v-if="hasMore" class="text-center q-mt-md">
           <q-btn
             outline
             color="primary"
             label="Cargar más"
-            :loading="transactionsStore.loading"
-            @click="transactionsStore.loadMore()"
+            :loading="isLoading"
+            @click="loadMore"
           />
         </div>
       </div>
 
       <!-- Empty state -->
-      <div v-else class="empty-state">
+      <div v-else-if="!isLoading" class="empty-state">
         <q-icon name="receipt_long" class="empty-icon" />
         <p class="empty-title">No hay transacciones</p>
         <p class="empty-description">
@@ -201,12 +215,14 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from 'vue';
+import { useDebounceFn } from '@vueuse/core';
 import { useAuthStore } from 'src/stores/auth';
 import { useTransactionsStore } from 'src/stores/transactions';
 import { useCategoriesStore } from 'src/stores/categories';
 import { useTeamsStore } from 'src/stores/teams';
 import TransactionItem from 'src/components/TransactionItem.vue';
-import type { TransactionFilters } from 'src/types';
+import type { TransactionFilters, TransactionType, TransactionStatus } from 'src/types';
+import { getSeasonOptions, UNCATEGORIZED_CATEGORY_ID } from 'src/types';
 
 const authStore = useAuthStore();
 const transactionsStore = useTransactionsStore();
@@ -220,6 +236,7 @@ const searchQuery = ref('');
 const filterType = ref<string | null>(null);
 const filterCategory = ref<string | null>(null);
 const filterTeam = ref<string | null>(null);
+const filterSeason = ref<string | null>(null);
 const dateRange = ref<{ from: string; to: string } | null>(null);
 
 // Options
@@ -227,6 +244,8 @@ const typeOptions = [
   { label: 'Ingresos', value: 'income' },
   { label: 'Gastos', value: 'expense' }
 ];
+
+const seasonOptions = getSeasonOptions();
 
 const categoryOptions = computed(() => {
   return categoriesStore.allActiveCategories.map(c => ({
@@ -243,10 +262,11 @@ const teamOptions = computed(() => {
 });
 
 // Computed
-const pendingCount = computed(() => transactionsStore.pendingTransactions.length);
+const isLoading = computed(() => transactionsStore.loading);
+const hasMore = computed(() => transactionsStore.hasMore);
 
 const hasFilters = computed(() => {
-  return !!(searchQuery.value || filterType.value || filterCategory.value || filterTeam.value || dateRange.value);
+  return !!(searchQuery.value || filterType.value || filterCategory.value || filterTeam.value || filterSeason.value || dateRange.value || activeTab.value !== 'all');
 });
 
 const dateRangeLabel = computed(() => {
@@ -254,30 +274,97 @@ const dateRangeLabel = computed(() => {
   return `${dateRange.value.from} - ${dateRange.value.to}`;
 });
 
+// Build filters for Firebase query
+function buildFilters(): TransactionFilters {
+  const filters: TransactionFilters = {};
+
+  // Type filter (from dropdown OR tab)
+  if (filterType.value) {
+    filters.type = filterType.value as TransactionType;
+  } else if (activeTab.value === 'income') {
+    filters.type = 'income';
+  } else if (activeTab.value === 'expense') {
+    filters.type = 'expense';
+  }
+
+  // Status filter (from tab)
+  if (activeTab.value === 'pending') {
+    filters.status = 'pending' as TransactionStatus;
+  }
+
+  // Category filter
+  if (filterCategory.value) {
+    filters.categoryId = filterCategory.value;
+  }
+
+  // Team filter
+  if (filterTeam.value) {
+    filters.teamId = filterTeam.value;
+  }
+
+  // Season filter
+  if (filterSeason.value) {
+    filters.season = filterSeason.value;
+  }
+
+  // Date range filter
+  if (dateRange.value) {
+    filters.dateFrom = new Date(dateRange.value.from);
+    filters.dateTo = new Date(dateRange.value.to);
+  }
+
+  // Text search (server-side via searchKeywords)
+  if (searchQuery.value && searchQuery.value.trim().length >= 2) {
+    filters.searchQuery = searchQuery.value.trim();
+  }
+
+  // Uncategorized filter (handled specially)
+  if (activeTab.value === 'uncategorized') {
+    filters.uncategorized = true;
+  }
+
+  return filters;
+}
+
+// Transactions: additional client-side filtering for uncategorized only
 const filteredTransactions = computed(() => {
   let transactions = transactionsStore.transactions;
 
-  // Tab filter
-  if (activeTab.value === 'income') {
-    transactions = transactions.filter(t => t.type === 'income');
-  } else if (activeTab.value === 'expense') {
-    transactions = transactions.filter(t => t.type === 'expense');
-  } else if (activeTab.value === 'pending') {
-    transactions = transactions.filter(t => t.status === 'pending');
-  }
-
-  // Search filter
-  if (searchQuery.value) {
-    const query = searchQuery.value.toLowerCase();
+  // Client-side: Uncategorized filter (complex OR query not supported in Firestore)
+  if (activeTab.value === 'uncategorized') {
     transactions = transactions.filter(t =>
-      t.description.toLowerCase().includes(query) ||
-      t.categoryName?.toLowerCase().includes(query) ||
-      t.vendor?.toLowerCase().includes(query)
+      !t.categoryId ||
+      t.categoryId === UNCATEGORIZED_CATEGORY_ID ||
+      t.categoryId === `${UNCATEGORIZED_CATEGORY_ID}_income`
     );
   }
 
   return transactions;
 });
+
+// Counts from currently loaded data
+const pendingCount = computed(() => {
+  return transactionsStore.transactions.filter(t => t.status === 'pending').length;
+});
+
+const uncategorizedCount = computed(() => {
+  return transactionsStore.transactions.filter(t =>
+    !t.categoryId ||
+    t.categoryId === UNCATEGORIZED_CATEGORY_ID ||
+    t.categoryId === `${UNCATEGORIZED_CATEGORY_ID}_income`
+  ).length;
+});
+
+// Fetch transactions with current filters
+async function fetchWithFilters() {
+  const filters = buildFilters();
+  await transactionsStore.fetchTransactions(filters);
+}
+
+// Debounced fetch for search input (300ms delay to avoid firing on every keystroke)
+const debouncedSearch = useDebounceFn(() => {
+  fetchWithFilters();
+}, 300);
 
 // Methods
 function clearFilters() {
@@ -285,36 +372,26 @@ function clearFilters() {
   filterType.value = null;
   filterCategory.value = null;
   filterTeam.value = null;
+  filterSeason.value = null;
   dateRange.value = null;
   activeTab.value = 'all';
+  fetchWithFilters();
 }
 
-async function applyFilters() {
-  const filters: TransactionFilters = {};
-
-  if (filterType.value) {
-    filters.type = filterType.value as 'income' | 'expense';
+async function loadMore() {
+  if (hasMore.value && !isLoading.value) {
+    await transactionsStore.loadMore();
   }
-
-  if (filterCategory.value) {
-    filters.categoryId = filterCategory.value;
-  }
-
-  if (filterTeam.value) {
-    filters.teamId = filterTeam.value;
-  }
-
-  if (dateRange.value) {
-    filters.dateFrom = new Date(dateRange.value.from);
-    filters.dateTo = new Date(dateRange.value.to);
-  }
-
-  await transactionsStore.fetchTransactions(filters);
 }
 
-// Watch filter changes
-watch([filterType, filterCategory, filterTeam, dateRange], () => {
-  applyFilters();
+// Watch filter changes - fetch from server immediately
+watch([filterType, filterCategory, filterTeam, filterSeason, dateRange, activeTab], () => {
+  fetchWithFilters();
+});
+
+// Watch search query with debounce - fetch from server after 300ms
+watch(searchQuery, () => {
+  debouncedSearch();
 });
 
 // Initial load
@@ -324,7 +401,7 @@ onMounted(async () => {
     categoriesStore.fetchCategories(),
     teamsStore.fetchTeams()
   ]);
-  transactionsStore.fetchTransactions({});
+  fetchWithFilters();
 });
 </script>
 
@@ -338,17 +415,112 @@ onMounted(async () => {
   margin: 0 auto;
 }
 
-.filter-card {
-  :deep(.q-field) {
-    .q-field__control {
-      border-radius: 8px;
-    }
+.filter-bar {
+  background: var(--color-bg-elevated);
+  border-radius: var(--radius-lg);
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+}
+
+.filter-row {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.filter-search {
+  flex: 1;
+  min-width: 180px;
+}
+
+.filter-select {
+  min-width: 120px;
+  max-width: 150px;
+  
+  :deep(.q-field__label) {
+    color: var(--color-text-secondary) !important;
+    font-size: 0.8125rem;
+  }
+  
+  :deep(.q-field__native) {
+    color: var(--color-text-primary);
+    font-size: 0.875rem;
+  }
+  
+  :deep(.q-field__control) {
+    height: 40px;
+  }
+}
+
+.filter-date-btn {
+  height: 40px;
+  min-width: 40px;
+  border-color: var(--color-border) !important;
+  color: var(--color-text-secondary) !important;
+  
+  &:hover {
+    border-color: var(--color-text-tertiary) !important;
+    background: var(--color-bg-tertiary) !important;
   }
 }
 
 :deep(.q-tabs) {
   .q-tab {
     padding: 8px 16px;
+  }
+}
+
+.loading-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-10);
+  color: var(--color-text-tertiary);
+  
+  p {
+    margin-top: var(--space-4);
+    font-size: 0.875rem;
+  }
+}
+
+.empty-state {
+  text-align: center;
+  padding: var(--space-10);
+  
+  .empty-icon {
+    font-size: 64px;
+    color: var(--color-text-muted);
+    margin-bottom: var(--space-4);
+  }
+  
+  .empty-title {
+    font-size: 1.125rem;
+    font-weight: 600;
+    color: var(--color-text-primary);
+    margin-bottom: var(--space-2);
+  }
+  
+  .empty-description {
+    color: var(--color-text-tertiary);
+    margin-bottom: var(--space-6);
+  }
+}
+
+@media (max-width: 600px) {
+  .filter-row {
+    flex-direction: column;
+  }
+  
+  .filter-search,
+  .filter-select {
+    width: 100%;
+    max-width: none;
+  }
+  
+  .filter-date-btn {
+    width: 100%;
   }
 }
 </style>

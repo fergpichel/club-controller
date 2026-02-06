@@ -49,6 +49,7 @@ module.exports = configure(function (/* ctx */) {
 
     framework: {
       config: {
+        dark: true,
         brand: {
           primary: '#635BFF',
           secondary: '#0A2540',

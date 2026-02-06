@@ -8,10 +8,13 @@ import {
   User as FirebaseUser,
   Unsubscribe
 } from 'firebase/auth'
-import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore'
+import {
+  doc, getDoc, setDoc, serverTimestamp,
+  collection, query, where, getDocs, addDoc, updateDoc, Timestamp, deleteDoc
+} from 'firebase/firestore'
 import { auth, db } from 'src/boot/firebase'
-import { isMockEnabled, mockService } from 'src/mocks'
-import type { User, UserRole } from 'src/types'
+import type { User, UserRole, ClubInvitation } from 'src/types'
+import { logger } from 'src/utils/logger'
 
 export const useAuthStore = defineStore('auth', () => {
   // State
@@ -20,20 +23,50 @@ export const useAuthStore = defineStore('auth', () => {
   const loading = ref(true)
   const error = ref<string | null>(null)
   const unsubscribe = ref<Unsubscribe | null>(null)
+  const _registering = ref(false) // Flag to prevent race condition during registration
 
   // Getters
   const isAuthenticated = computed(() => !!user.value)
-  const isAdmin = computed(() => user.value?.role === 'admin')
-  const isManager = computed(() => ['admin', 'manager'].includes(user.value?.role || ''))
-  const isAccountant = computed(() => user.value?.role === 'accountant')
-  const canApprove = computed(() => ['admin', 'manager'].includes(user.value?.role || ''))
-  const canEdit = computed(() => ['admin', 'manager', 'employee'].includes(user.value?.role || ''))
   const userRole = computed(() => user.value?.role || 'employee')
   const clubId = computed(() => user.value?.clubId)
 
+  // Role hierarchy checks
+  const isAdmin = computed(() => user.value?.role === 'admin')
+  /** admin or manager — full management except closings */
+  const isManager = computed(() => ['admin', 'manager'].includes(user.value?.role || ''))
+  /** admin, manager or controller — can see sensitive data */
+  const isController = computed(() => ['admin', 'manager', 'controller'].includes(user.value?.role || ''))
+
+  // Granular permissions
+  /** Can modify Settings (categories, catalogs, etc.) — admin, manager */
+  const canManageSettings = computed(() => ['admin', 'manager'].includes(user.value?.role || ''))
+  /** Can perform month closings — admin, controller */
+  const canDoClosings = computed(() => ['admin', 'controller'].includes(user.value?.role || ''))
+  /** Can approve transactions — admin, manager, controller */
+  const canApprove = computed(() => ['admin', 'manager', 'controller'].includes(user.value?.role || ''))
+  /** Can create/edit transactions — admin, manager, controller, editor, employee */
+  const canEdit = computed(() => ['admin', 'manager', 'controller', 'editor', 'employee'].includes(user.value?.role || ''))
+  /** Can see all transactions (not just own) — everyone except employee */
+  const canViewAll = computed(() => user.value?.role !== 'employee')
+  /** Can see statistics, charts, treasury — everyone except employee */
+  const canViewStats = computed(() => user.value?.role !== 'employee')
+  /** Can see sensitive category amounts (not anonymized) — admin, manager, controller */
+  const canViewSensitive = computed(() => ['admin', 'manager', 'controller'].includes(user.value?.role || ''))
+  /** Can mark categories as sensitive — admin, manager only */
+  const canMarkSensitive = computed(() => ['admin', 'manager'].includes(user.value?.role || ''))
+  /** Can remove a sensitive category from a transaction — admin, manager only */
+  const canRemoveSensitiveCategory = computed(() => ['admin', 'manager'].includes(user.value?.role || ''))
+  /** Can invite users to the club — admin, manager */
+  const canInviteUsers = computed(() => ['admin', 'manager'].includes(user.value?.role || ''))
+  /** Legacy: accountant check (now viewer or any read-only) */
+  const isAccountant = computed(() => user.value?.role === 'viewer')
+  /** Employee: can only see own data */
+  const isEmployee = computed(() => user.value?.role === 'employee')
+
   // Actions
   async function setUser(fbUser: FirebaseUser) {
-    if (isMockEnabled()) return
+    // Skip if registration is in progress — register() will set user.value itself
+    if (_registering.value) return
 
     firebaseUser.value = fbUser
     loading.value = true
@@ -70,7 +103,7 @@ export const useAuthStore = defineStore('auth', () => {
         user.value = newUser
       }
     } catch (e) {
-      console.error('Error fetching user data:', e)
+      logger.error('Error fetching user data:', e)
       error.value = 'Error loading user data'
     } finally {
       loading.value = false
@@ -93,18 +126,6 @@ export const useAuthStore = defineStore('auth', () => {
     error.value = null
 
     try {
-      if (isMockEnabled()) {
-        const mockUser = await mockService.auth.login(email, password)
-        if (mockUser) {
-          user.value = mockUser
-          loading.value = false
-          return true
-        }
-        error.value = 'Credenciales inválidas'
-        loading.value = false
-        return false
-      }
-
       await signInWithEmailAndPassword(auth, email, password)
       return true
     } catch (e: unknown) {
@@ -119,15 +140,9 @@ export const useAuthStore = defineStore('auth', () => {
   async function register(email: string, password: string, displayName: string, clubId: string, role: UserRole = 'employee') {
     loading.value = true
     error.value = null
+    _registering.value = true // Prevent onAuthStateChanged from interfering
 
     try {
-      if (isMockEnabled()) {
-        const mockUser = await mockService.auth.register(email, password, displayName)
-        user.value = mockUser
-        loading.value = false
-        return true
-      }
-
       const { user: fbUser } = await createUserWithEmailAndPassword(auth, email, password)
 
       const newUser: User = {
@@ -146,6 +161,10 @@ export const useAuthStore = defineStore('auth', () => {
         updatedAt: serverTimestamp()
       })
 
+      // Explicitly set user with correct clubId (avoids race condition with onAuthStateChanged)
+      firebaseUser.value = fbUser
+      user.value = newUser
+
       return true
     } catch (e: unknown) {
       const firebaseError = e as { code?: string }
@@ -153,21 +172,16 @@ export const useAuthStore = defineStore('auth', () => {
       return false
     } finally {
       loading.value = false
+      _registering.value = false
     }
   }
 
   async function logout() {
     try {
-      if (isMockEnabled()) {
-        await mockService.auth.logout()
-        clearUser()
-        return
-      }
-
       await signOut(auth)
       clearUser()
     } catch (e) {
-      console.error('Error signing out:', e)
+      logger.error('Error signing out:', e)
     }
   }
 
@@ -176,13 +190,6 @@ export const useAuthStore = defineStore('auth', () => {
     error.value = null
 
     try {
-      if (isMockEnabled()) {
-        // Simulate password reset in mock mode
-        await new Promise(resolve => setTimeout(resolve, 500))
-        loading.value = false
-        return true
-      }
-
       await sendPasswordResetEmail(auth, email)
       return true
     } catch (e: unknown) {
@@ -194,37 +201,247 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
+  /** Fields the user is allowed to edit on their own profile */
+  const SELF_EDITABLE_FIELDS = ['displayName', 'photoURL']
+
   async function updateUserProfile(data: Partial<User>) {
     if (!user.value) return false
 
     try {
-      if (isMockEnabled()) {
-        user.value = { ...user.value, ...data }
-        return true
+      // Only allow safe fields — prevent self-escalation of role/clubId
+      const safeData: Record<string, unknown> = {}
+      for (const key of SELF_EDITABLE_FIELDS) {
+        if (key in data) {
+          safeData[key] = (data as Record<string, unknown>)[key]
+        }
       }
 
+      if (Object.keys(safeData).length === 0) return false
+
       await setDoc(doc(db, 'users', user.value.uid), {
-        ...data,
+        ...safeData,
         updatedAt: serverTimestamp()
       }, { merge: true })
 
-      user.value = { ...user.value, ...data }
+      user.value = { ...user.value, ...safeData } as User
       return true
     } catch (e) {
-      console.error('Error updating profile:', e)
+      logger.error('Error updating profile:', e)
       return false
     }
   }
 
-  // Initialize mock user if mock mode
-  async function initMockUser() {
-    if (isMockEnabled()) {
-      loading.value = true
-      const mockUser = await mockService.auth.getCurrentUser()
-      if (mockUser) {
-        user.value = mockUser
+  // ===== INVITATIONS =====
+
+  const invitations = ref<ClubInvitation[]>([])
+  const clubMembers = ref<User[]>([])
+
+  /** Fetch all pending invitations for the current club */
+  async function fetchInvitations() {
+    if (!user.value?.clubId) return
+    try {
+      const q = query(
+        collection(db, 'invitations'),
+        where('clubId', '==', user.value.clubId),
+        where('status', '==', 'pending')
+      )
+      const snapshot = await getDocs(q)
+      invitations.value = snapshot.docs.map(d => {
+        const data = d.data()
+        return {
+          id: d.id,
+          ...data,
+          createdAt: data.createdAt?.toDate?.() || new Date(),
+          expiresAt: data.expiresAt?.toDate?.() || new Date()
+        } as ClubInvitation
+      })
+    } catch (e) {
+      logger.error('Error fetching invitations:', e)
+    }
+  }
+
+  /** Create an invitation for a user to join the club */
+  async function createInvitation(email: string, role: UserRole): Promise<boolean> {
+    if (!user.value?.clubId) return false
+    if (!canInviteUsers.value) {
+      throw new Error('Sin permisos para invitar usuarios')
+    }
+
+    try {
+      // Check for existing pending invitation
+      const existing = invitations.value.find(
+        i => i.email.toLowerCase() === email.toLowerCase() && i.status === 'pending'
+      )
+      if (existing) {
+        throw new Error('Ya existe una invitación pendiente para este email')
       }
+
+      const now = new Date()
+      const expiresAt = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000) // 7 days
+
+      // Generate a cryptographic token for the invitation
+      const token = crypto.randomUUID()
+
+      // Get club name
+      const clubDoc = await getDoc(doc(db, 'clubs', user.value.clubId))
+      const clubName = clubDoc.exists() ? clubDoc.data().name : 'Club'
+
+      await addDoc(collection(db, 'invitations'), {
+        clubId: user.value.clubId,
+        clubName,
+        email: email.toLowerCase(),
+        role,
+        token,
+        invitedBy: user.value.uid,
+        invitedByName: user.value.displayName,
+        status: 'pending',
+        createdAt: serverTimestamp(),
+        expiresAt: Timestamp.fromDate(expiresAt)
+      })
+
+      await fetchInvitations()
+      return true
+    } catch (e) {
+      logger.error('Error creating invitation:', e)
+      throw e
+    }
+  }
+
+  /** Cancel a pending invitation */
+  async function cancelInvitation(invitationId: string): Promise<void> {
+    await deleteDoc(doc(db, 'invitations', invitationId))
+    invitations.value = invitations.value.filter(i => i.id !== invitationId)
+  }
+
+  /** Check if there is a pending, non-expired invitation for a given email */
+  async function checkInvitation(email: string): Promise<ClubInvitation | null> {
+    try {
+      const q = query(
+        collection(db, 'invitations'),
+        where('email', '==', email.toLowerCase()),
+        where('status', '==', 'pending')
+      )
+      const snapshot = await getDocs(q)
+      if (snapshot.empty) return null
+
+      const d = snapshot.docs[0]
+      const data = d.data()
+      const expiresAt = data.expiresAt?.toDate?.() || new Date(0)
+
+      // Check if invitation has expired
+      if (expiresAt.getTime() < Date.now()) {
+        // Mark as expired silently
+        await updateDoc(doc(db, 'invitations', d.id), { status: 'expired' })
+        return null
+      }
+
+      return {
+        id: d.id,
+        ...data,
+        createdAt: data.createdAt?.toDate?.() || new Date(),
+        expiresAt
+      } as ClubInvitation
+    } catch (e) {
+      logger.error('Error checking invitation:', e)
+      return null
+    }
+  }
+
+  /** Accept an invitation: mark it as accepted */
+  async function acceptInvitation(invitationId: string): Promise<void> {
+    await updateDoc(doc(db, 'invitations', invitationId), {
+      status: 'accepted'
+    })
+  }
+
+  /** Register a user who was invited — joins existing club */
+  async function registerWithInvitation(
+    email: string,
+    password: string,
+    displayName: string,
+    invitation: ClubInvitation
+  ): Promise<boolean> {
+    loading.value = true
+    error.value = null
+    _registering.value = true
+
+    try {
+      const { user: fbUser } = await createUserWithEmailAndPassword(auth, email, password)
+
+      const newUser: User = {
+        uid: fbUser.uid,
+        email,
+        displayName,
+        role: invitation.role,
+        clubId: invitation.clubId,
+        invitedBy: invitation.invitedBy,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      }
+
+      await setDoc(doc(db, 'users', fbUser.uid), {
+        ...newUser,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      })
+
+      // Mark invitation as accepted
+      await acceptInvitation(invitation.id)
+
+      firebaseUser.value = fbUser
+      user.value = newUser
+
+      return true
+    } catch (e: unknown) {
+      const firebaseError = e as { code?: string }
+      error.value = getAuthErrorMessage(firebaseError.code || '')
+      return false
+    } finally {
       loading.value = false
+      _registering.value = false
+    }
+  }
+
+  /** Fetch all members of the current club */
+  async function fetchClubMembers() {
+    if (!user.value?.clubId) return
+    try {
+      const q = query(
+        collection(db, 'users'),
+        where('clubId', '==', user.value.clubId)
+      )
+      const snapshot = await getDocs(q)
+      clubMembers.value = snapshot.docs.map(d => {
+        const data = d.data()
+        return {
+          uid: d.id,
+          ...data,
+          createdAt: data.createdAt?.toDate?.() || new Date(),
+          updatedAt: data.updatedAt?.toDate?.() || new Date()
+        } as User
+      })
+    } catch (e) {
+      logger.error('Error fetching club members:', e)
+    }
+  }
+
+  /** Update a member's role — requires admin or manager permission */
+  async function updateMemberRole(uid: string, newRole: UserRole): Promise<boolean> {
+    if (!canInviteUsers.value) {
+      logger.error('Permission denied: only admin/manager can change member roles')
+      return false
+    }
+    try {
+      await updateDoc(doc(db, 'users', uid), {
+        role: newRole,
+        updatedAt: serverTimestamp()
+      })
+      const member = clubMembers.value.find(m => m.uid === uid)
+      if (member) member.role = newRole
+      return true
+    } catch (e) {
+      logger.error('Error updating member role:', e)
+      return false
     }
   }
 
@@ -254,11 +471,25 @@ export const useAuthStore = defineStore('auth', () => {
     isAuthenticated,
     isAdmin,
     isManager,
+    isController,
     isAccountant,
+    isEmployee,
+    canManageSettings,
+    canDoClosings,
     canApprove,
     canEdit,
+    canViewAll,
+    canViewStats,
+    canViewSensitive,
+    canMarkSensitive,
+    canRemoveSensitiveCategory,
+    canInviteUsers,
     userRole,
     clubId,
+
+    // Invitations & Members
+    invitations,
+    clubMembers,
 
     // Actions
     setUser,
@@ -266,9 +497,20 @@ export const useAuthStore = defineStore('auth', () => {
     setUnsubscribe,
     login,
     register,
+    registerWithInvitation,
     logout,
     resetPassword,
     updateUserProfile,
-    initMockUser
+
+    // Invitation actions
+    fetchInvitations,
+    createInvitation,
+    cancelInvitation,
+    checkInvitation,
+    acceptInvitation,
+
+    // Members actions
+    fetchClubMembers,
+    updateMemberRole
   }
 })

@@ -94,8 +94,18 @@ import {
   Legend,
   Filler
 } from 'chart.js'
-import { startOfMonth, endOfMonth } from 'date-fns'
-import { useTransactionsStore } from 'src/stores/transactions'
+import { format } from 'date-fns'
+import {
+  collection,
+  query,
+  where,
+  getDocs,
+  Timestamp
+} from 'firebase/firestore'
+import { db } from 'src/boot/firebase'
+import { useAuthStore } from 'src/stores/auth'
+import { computeSeason, getSeasonDates } from 'src/types'
+import { formatCurrency, formatCurrencyShort } from 'src/utils/formatters'
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, Filler)
 
@@ -107,8 +117,9 @@ withDefaults(defineProps<{
   subtitle: 'Evolución mensual vs temporada anterior'
 })
 
-const transactionsStore = useTransactionsStore()
+const authStore = useAuthStore()
 const selectedMetric = ref<'income' | 'expenses' | 'balance'>('balance')
+const dataLoaded = ref(false)
 
 const metrics = [
   { value: 'income', label: 'Ingresos' },
@@ -116,55 +127,94 @@ const metrics = [
   { value: 'balance', label: 'Balance' }
 ]
 
-// Season calculations (Sept - Aug)
+// Season calculations (Jul - Jun) using centralized helpers
 const now = new Date()
-const currentSeasonStart = now.getMonth() >= 8 
-  ? new Date(now.getFullYear(), 8, 1) 
-  : new Date(now.getFullYear() - 1, 8, 1)
-const previousSeasonStart = new Date(currentSeasonStart.getFullYear() - 1, 8, 1)
+const currentSeasonKey = computeSeason(now)
+const currentSeasonDates = getSeasonDates(currentSeasonKey)
+const currentSeasonStart = currentSeasonDates.start // July 1
+
+// Previous season
+const prevStartYear = currentSeasonStart.getFullYear() - 1
+const previousSeasonStart = new Date(prevStartYear, 6, 1) // July 1 of previous year
 
 const currentSeasonLabel = computed(() => {
   const year = currentSeasonStart.getFullYear()
-  return `Temporada ${year}-${(year + 1).toString().slice(-2)}`
+  return `Temporada ${year}/${(year + 1).toString().slice(-2)}`
 })
 
 const previousSeasonLabel = computed(() => {
   const year = previousSeasonStart.getFullYear()
-  return `Temporada ${year}-${(year + 1).toString().slice(-2)}`
+  return `Temporada ${year}/${(year + 1).toString().slice(-2)}`
 })
 
-// Season months (Sept to Aug)
-const seasonMonths = ['sep', 'oct', 'nov', 'dic', 'ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago']
-const seasonMonthsFull = ['Septiembre', 'Octubre', 'Noviembre', 'Diciembre', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto']
+// Season months (Jul to Jun)
+const seasonMonths = ['jul', 'ago', 'sep', 'oct', 'nov', 'dic', 'ene', 'feb', 'mar', 'abr', 'may', 'jun']
+const seasonMonthsFull = ['Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio']
 
-// Get data for a specific month in a season
-const getMonthData = (seasonStart: Date, monthIndex: number) => {
-  const year = monthIndex < 4 ? seasonStart.getFullYear() : seasonStart.getFullYear() + 1
-  const month = monthIndex < 4 ? 8 + monthIndex : monthIndex - 4 // Convert to JS month (0-11)
-  
-  const monthStart = startOfMonth(new Date(year, month, 1))
-  const monthEnd = endOfMonth(monthStart)
-  
-  const monthTxns = transactionsStore.transactions.filter(t => {
-    const txnDate = new Date(t.date)
-    return txnDate >= monthStart && txnDate <= monthEnd && t.status !== 'rejected'
+// Local monthly data fetched directly from Firestore
+interface MonthBucket { income: number; expenses: number; balance: number }
+const currentSeasonData = ref<MonthBucket[]>(Array.from({ length: 12 }, () => ({ income: 0, expenses: 0, balance: 0 })))
+const previousSeasonData = ref<MonthBucket[]>(Array.from({ length: 12 }, () => ({ income: 0, expenses: 0, balance: 0 })))
+
+/**
+ * Fetch monthly totals for a season directly from Firestore.
+ * Uses the same query pattern as statisticsStore.fetchSeasonTrendData
+ * (clubId + status + date range) to leverage the existing composite index.
+ */
+async function fetchSeasonMonthlyData(seasonStart: Date): Promise<MonthBucket[]> {
+  if (!authStore.clubId) return Array.from({ length: 12 }, () => ({ income: 0, expenses: 0, balance: 0 }))
+
+  const seasonYear = seasonStart.getFullYear()
+  const seasonEnd = new Date(seasonYear + 1, 5, 30, 23, 59, 59) // Jun 30
+
+  // Generate month keys in season order (Jul → Jun)
+  const monthKeys: string[] = []
+  for (let m = 6; m < 12; m++) monthKeys.push(format(new Date(seasonYear, m, 1), 'yyyy-MM'))
+  for (let m = 0; m < 6; m++) monthKeys.push(format(new Date(seasonYear + 1, m, 1), 'yyyy-MM'))
+
+  const buckets: Record<string, MonthBucket> = {}
+  monthKeys.forEach(k => { buckets[k] = { income: 0, expenses: 0, balance: 0 } })
+
+  const q = query(
+    collection(db, 'transactions'),
+    where('clubId', '==', authStore.clubId),
+    where('status', 'in', ['approved', 'pending', 'paid']),
+    where('date', '>=', Timestamp.fromDate(seasonStart)),
+    where('date', '<=', Timestamp.fromDate(seasonEnd))
+  )
+
+  const snapshot = await getDocs(q)
+  snapshot.forEach(doc => {
+    const data = doc.data()
+    const date = data.date?.toDate() || new Date()
+    const key = format(date, 'yyyy-MM')
+
+    if (buckets[key]) {
+      if (data.type === 'income') {
+        buckets[key].income += data.amount || 0
+      } else {
+        buckets[key].expenses += data.amount || 0
+      }
+    }
   })
-  
-  const income = monthTxns.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0)
-  const expenses = monthTxns.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0)
-  
-  return { income, expenses, balance: income - expenses }
+
+  // Calculate balance per month
+  return monthKeys.map(k => {
+    buckets[k].balance = buckets[k].income - buckets[k].expenses
+    return buckets[k]
+  })
 }
 
 // Monthly comparison data
 const monthlyComparison = computed(() => {
-  const currentMonthInSeason = now.getMonth() >= 8 
-    ? now.getMonth() - 8 
-    : now.getMonth() + 4
+  const jsMonth = now.getMonth()
+  const currentMonthInSeason = jsMonth >= 6
+    ? jsMonth - 6   // Jul=0, Aug=1, ..., Dec=5
+    : jsMonth + 6   // Jan=6, Feb=7, ..., Jun=11
   
   return seasonMonths.map((month, index) => {
-    const current = getMonthData(currentSeasonStart, index)
-    const previous = getMonthData(previousSeasonStart, index)
+    const current = currentSeasonData.value[index]
+    const previous = previousSeasonData.value[index]
     const isFuture = index > currentMonthInSeason
     
     const currentValue = selectedMetric.value === 'income' ? current.income 
@@ -194,9 +244,10 @@ const currentTotal = computed(() => {
 })
 
 const previousTotal = computed(() => {
-  const currentMonthInSeason = now.getMonth() >= 8 
-    ? now.getMonth() - 8 
-    : now.getMonth() + 4
+  const jsMonth = now.getMonth()
+  const currentMonthInSeason = jsMonth >= 6
+    ? jsMonth - 6
+    : jsMonth + 6
   
   return monthlyComparison.value
     .filter((_, index) => index <= currentMonthInSeason)
@@ -343,24 +394,14 @@ const insights = computed(() => {
   return result
 })
 
-function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat('es-ES', {
-    style: 'currency',
-    currency: 'EUR',
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0
-  }).format(amount)
-}
-
-function formatCurrencyShort(amount: number): string {
-  if (Math.abs(amount) >= 1000) {
-    return `${(amount / 1000).toFixed(1).replace('.0', '')}k€`
-  }
-  return `${Math.round(amount)}€`
-}
-
 onMounted(async () => {
-  await transactionsStore.fetchTransactions({})
+  const [current, previous] = await Promise.all([
+    fetchSeasonMonthlyData(currentSeasonStart),
+    fetchSeasonMonthlyData(previousSeasonStart)
+  ])
+  currentSeasonData.value = current
+  previousSeasonData.value = previous
+  dataLoaded.value = true
 })
 </script>
 

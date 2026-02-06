@@ -5,25 +5,27 @@
       <div class="row items-center justify-between">
         <div>
           <h1>Cierres de mes</h1>
-          <p class="header-subtitle">Gestión de períodos contables</p>
+          <p class="header-subtitle">Gestión de períodos contables por temporada</p>
         </div>
         <q-select
-          v-model="selectedYear"
-          :options="yearOptions"
+          v-model="selectedSeason"
+          :options="seasonOptions"
           dense
           outlined
+          emit-value
+          map-options
           bg-color="white"
-          style="min-width: 100px"
+          style="min-width: 180px"
         />
       </div>
     </div>
 
     <div class="page-content q-pa-md">
-      <!-- Year summary -->
+      <!-- Season summary -->
       <q-card class="q-mb-lg animate-fade-in">
         <q-card-section>
           <div class="row items-center justify-between q-mb-md">
-            <h3 class="section-title">Resumen {{ selectedYear }}</h3>
+            <h3 class="section-title">Resumen Temporada {{ selectedSeason }}</h3>
             <q-btn
               v-if="canGenerateForecasts"
               outline
@@ -36,18 +38,18 @@
           </div>
           <div class="stats-grid">
             <div class="stat-card stat-positive">
-              <div class="stat-value text-positive">{{ formatCurrency(yearSummary.totalIncome) }}</div>
+              <div class="stat-value text-positive">{{ formatCurrency(seasonSummary.totalIncome) }}</div>
               <div class="stat-label">Ingresos totales</div>
             </div>
             <div class="stat-card stat-negative">
-              <div class="stat-value text-negative">{{ formatCurrency(yearSummary.totalExpenses) }}</div>
+              <div class="stat-value text-negative">{{ formatCurrency(seasonSummary.totalExpenses) }}</div>
               <div class="stat-label">Gastos totales</div>
             </div>
             <div class="stat-card stat-neutral">
-              <div class="stat-value" :class="yearSummary.balance >= 0 ? 'text-positive' : 'text-negative'">
-                {{ formatCurrency(yearSummary.balance) }}
+              <div class="stat-value" :class="seasonSummary.balance >= 0 ? 'text-positive' : 'text-negative'">
+                {{ formatCurrency(seasonSummary.balance) }}
               </div>
-              <div class="stat-label">Balance anual</div>
+              <div class="stat-label">Balance temporada</div>
             </div>
             <div class="stat-card">
               <div class="stat-value">{{ closedMonthsCount }}/12</div>
@@ -57,16 +59,16 @@
         </q-card-section>
       </q-card>
 
-      <!-- Months grid -->
+      <!-- Months grid — season order (Jul-Jun) -->
       <div class="months-grid">
         <div
-          v-for="month in months"
-          :key="month.number"
+          v-for="month in seasonMonths"
+          :key="`${month.year}-${month.number}`"
           class="month-card animate-stagger"
           :class="{ 'is-closed': month.closing?.status === 'closed' }"
         >
           <div class="month-header">
-            <div class="month-title">{{ month.name }}</div>
+            <div class="month-title">{{ month.name }} {{ month.year }}</div>
             <q-badge
               v-if="month.closing?.status === 'closed'"
               color="positive"
@@ -108,6 +110,11 @@
               </span>
             </div>
 
+            <div class="month-count">
+              <q-icon name="receipt_long" size="14px" />
+              {{ month.transactionCount }} movimientos
+            </div>
+
             <div class="month-actions">
               <q-btn
                 v-if="month.closing?.status !== 'closed' && month.isPast"
@@ -117,7 +124,7 @@
                 size="sm"
                 class="full-width"
                 :loading="closingMonth === month.number"
-                @click="closeMonth(month.number)"
+                @click="closeMonth(month.number, month.year)"
               />
               <q-btn
                 v-else-if="month.closing?.status === 'closed'"
@@ -126,7 +133,7 @@
                 label="Ver detalle"
                 size="sm"
                 class="full-width"
-                :to="{ name: 'closing-detail', params: { year: selectedYear, month: month.number } }"
+                :to="{ name: 'closing-detail', params: { year: month.year, month: month.number } }"
               />
               <q-btn
                 v-else
@@ -182,56 +189,81 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue';
 import { useQuasar } from 'quasar';
-import { isBefore, endOfMonth } from 'date-fns';
+import { isBefore, endOfMonth, startOfMonth } from 'date-fns';
 import { useStatisticsStore } from 'src/stores/statistics';
+import { useTransactionsStore } from 'src/stores/transactions';
+import { computeSeason, getSeasonOptions } from 'src/types';
+import { formatCurrency } from 'src/utils/formatters'
 
 const $q = useQuasar();
 const statisticsStore = useStatisticsStore();
+const transactionsStore = useTransactionsStore();
 
 // State
-const selectedYear = ref(new Date().getFullYear());
+const currentSeason = computeSeason(new Date());
+const selectedSeason = ref(currentSeason);
 const closingMonth = ref<number | null>(null);
 const showCloseDialog = ref(false);
 const closeNotes = ref('');
 const monthToCloseNumber = ref<number | null>(null);
+const monthToCloseYear = ref<number | null>(null);
 const generatingForecasts = ref(false);
 
-const yearOptions = computed(() => {
-  const currentYear = new Date().getFullYear();
-  return [currentYear, currentYear - 1, currentYear - 2];
-});
+const seasonOptions = getSeasonOptions();
 
-const monthNames = [
-  'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
-  'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
-];
+// Season order: Jul(7), Aug(8), Sep(9), Oct(10), Nov(11), Dec(12), Jan(1), Feb(2), Mar(3), Apr(4), May(5), Jun(6)
+const SEASON_MONTHS = [7, 8, 9, 10, 11, 12, 1, 2, 3, 4, 5, 6];
+const monthNames: Record<number, string> = {
+  1: 'Enero', 2: 'Febrero', 3: 'Marzo', 4: 'Abril', 5: 'Mayo', 6: 'Junio',
+  7: 'Julio', 8: 'Agosto', 9: 'Septiembre', 10: 'Octubre', 11: 'Noviembre', 12: 'Diciembre'
+};
 
-const months = computed(() => {
+// Computed: get start year from season string
+const seasonStartYear = computed(() => parseInt(selectedSeason.value.split('/')[0]));
+
+// Build month cards from real transaction data
+const seasonMonths = computed(() => {
   const now = new Date();
-  return monthNames.map((name, index) => {
-    const monthNumber = index + 1;
-    const monthEnd = endOfMonth(new Date(selectedYear.value, index));
-    const isPast = isBefore(monthEnd, now);
-    const closing = statisticsStore.getMonthClosingStatus(selectedYear.value, monthNumber);
+  const allTransactions = transactionsStore.transactions;
+  const startYear = seasonStartYear.value;
 
-    // Mock data - in real app, fetch from store
-    const income = Math.random() * 10000;
-    const expenses = Math.random() * 8000;
+  return SEASON_MONTHS.map(monthNum => {
+    const year = monthNum >= 7 ? startYear : startYear + 1;
+    const monthStart = startOfMonth(new Date(year, monthNum - 1));
+    const monthEnd = endOfMonth(new Date(year, monthNum - 1));
+    const isPast = isBefore(monthEnd, now);
+
+    // Get real transaction data for this month
+    const monthTransactions = allTransactions.filter(t => {
+      const tDate = new Date(t.date);
+      return tDate >= monthStart && tDate <= monthEnd;
+    });
+
+    const income = monthTransactions
+      .filter(t => t.type === 'income')
+      .reduce((sum, t) => sum + t.amount, 0);
+    const expenses = monthTransactions
+      .filter(t => t.type === 'expense')
+      .reduce((sum, t) => sum + t.amount, 0);
+
+    const closing = statisticsStore.getMonthClosingStatus(year, monthNum);
 
     return {
-      number: monthNumber,
-      name,
+      number: monthNum,
+      year,
+      name: monthNames[monthNum],
       income,
       expenses,
       balance: income - expenses,
+      transactionCount: monthTransactions.length,
       isPast,
       closing
     };
   });
 });
 
-const yearSummary = computed(() => {
-  const totals = months.value.reduce(
+const seasonSummary = computed(() => {
+  const totals = seasonMonths.value.reduce(
     (acc, month) => ({
       totalIncome: acc.totalIncome + month.income,
       totalExpenses: acc.totalExpenses + month.expenses
@@ -246,43 +278,34 @@ const yearSummary = computed(() => {
 });
 
 const closedMonthsCount = computed(() => {
-  return statisticsStore.monthClosings.filter(
-    c => c.year === selectedYear.value && c.status === 'closed'
-  ).length;
+  return seasonMonths.value.filter(m => m.closing?.status === 'closed').length;
 });
 
 const monthToClose = computed(() => {
   if (monthToCloseNumber.value === null) return '';
-  return `${monthNames[monthToCloseNumber.value - 1]} ${selectedYear.value}`;
+  return `${monthNames[monthToCloseNumber.value]} ${monthToCloseYear.value}`;
 });
 
 const canGenerateForecasts = computed(() => {
-  return selectedYear.value === new Date().getFullYear();
+  return selectedSeason.value === currentSeason;
 });
 
 // Methods
-function formatCurrency(value: number): string {
-  return new Intl.NumberFormat('es-ES', {
-    style: 'currency',
-    currency: 'EUR',
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0
-  }).format(value);
-}
 
-function closeMonth(monthNumber: number) {
+function closeMonth(monthNumber: number, year: number) {
   monthToCloseNumber.value = monthNumber;
+  monthToCloseYear.value = year;
   closeNotes.value = '';
   showCloseDialog.value = true;
 }
 
 async function confirmCloseMonth() {
-  if (monthToCloseNumber.value === null) return;
+  if (monthToCloseNumber.value === null || monthToCloseYear.value === null) return;
 
   closingMonth.value = monthToCloseNumber.value;
 
   const result = await statisticsStore.closeMonth(
-    selectedYear.value,
+    monthToCloseYear.value,
     monthToCloseNumber.value,
     closeNotes.value
   );
@@ -307,12 +330,12 @@ async function generateForecasts() {
   generatingForecasts.value = true;
 
   try {
-    await statisticsStore.generateHistoricalForecasts(selectedYear.value);
+    await statisticsStore.generateHistoricalForecasts(seasonStartYear.value);
     $q.notify({
       type: 'positive',
-      message: 'Previsiones generadas basadas en el año anterior'
+      message: 'Previsiones generadas basadas en la temporada anterior'
     });
-  } catch (error) {
+  } catch {
     $q.notify({
       type: 'negative',
       message: 'Error al generar previsiones'
@@ -322,12 +345,17 @@ async function generateForecasts() {
   }
 }
 
-watch(selectedYear, () => {
-  statisticsStore.fetchMonthClosings(selectedYear.value);
+watch(selectedSeason, () => {
+  const startYear = parseInt(selectedSeason.value.split('/')[0]);
+  // Fetch closings for both years of the season
+  statisticsStore.fetchMonthClosings(startYear);
+  statisticsStore.fetchMonthClosings(startYear + 1);
 });
 
 onMounted(() => {
-  statisticsStore.fetchMonthClosings(selectedYear.value);
+  const startYear = seasonStartYear.value;
+  statisticsStore.fetchMonthClosings(startYear);
+  statisticsStore.fetchMonthClosings(startYear + 1);
 });
 </script>
 
@@ -424,7 +452,6 @@ onMounted(() => {
       justify-content: space-between;
       padding: 12px 0;
       border-top: 1px solid var(--color-border-light);
-      margin-bottom: 12px;
 
       .balance-label {
         font-size: 0.875rem;
@@ -436,6 +463,15 @@ onMounted(() => {
         font-weight: 700;
         font-size: 1rem;
       }
+    }
+
+    .month-count {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.8rem;
+      color: var(--color-text-tertiary);
+      padding-bottom: 12px;
     }
   }
 }

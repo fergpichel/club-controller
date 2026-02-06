@@ -269,6 +269,7 @@ import { useStatisticsStore } from 'src/stores/statistics';
 import { useTransactionsStore } from 'src/stores/transactions';
 import { useCategoriesStore } from 'src/stores/categories';
 import type { MonthClosing, Attachment } from 'src/types';
+import { formatCurrency } from 'src/utils/formatters'
 
 const $q = useQuasar();
 const statisticsStore = useStatisticsStore();
@@ -367,12 +368,6 @@ const attachments = computed(() => {
 });
 
 // Methods
-function formatCurrency(value: number): string {
-  return new Intl.NumberFormat('es-ES', {
-    style: 'currency',
-    currency: 'EUR'
-  }).format(value);
-}
 
 function formatMonth(year: number, month: number): string {
   return format(new Date(year, month - 1), 'MMMM yyyy', { locale: es });

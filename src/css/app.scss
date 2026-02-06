@@ -405,6 +405,39 @@ h4, .text-h4 {
   }
 }
 
+// Fix q-select placeholder and label visibility in dark mode
+.q-select {
+  .q-field__native {
+    span {
+      color: var(--color-text-tertiary);
+    }
+  }
+  
+  .q-field__label {
+    color: var(--color-text-secondary) !important;
+  }
+  
+  // Dropdown arrow icon
+  .q-select__dropdown-icon {
+    color: var(--color-text-tertiary);
+  }
+}
+
+// Ensure outlined fields have visible borders and text
+.q-field--outlined {
+  .q-field__control {
+    border-color: var(--color-border);
+    
+    &::before {
+      border-color: var(--color-border);
+    }
+  }
+  
+  &:hover .q-field__control::before {
+    border-color: var(--color-text-tertiary);
+  }
+}
+
 // === BADGES & CHIPS ===
 .q-badge {
   font-family: $font-body;

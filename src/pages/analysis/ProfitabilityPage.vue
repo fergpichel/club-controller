@@ -10,10 +10,22 @@
             ¿Son sostenibles las cuotas? ¿Qué equipos necesitan atención?
           </p>
         </div>
-        <div class="header-right">
+        <div class="header-right row items-center q-gutter-sm">
+          <q-select
+            v-model="selectedSeason"
+            :options="seasonOptions"
+            option-value="value"
+            option-label="label"
+            emit-value
+            map-options
+            label="Temporada"
+            outlined
+            dense
+            style="min-width: 140px"
+          />
           <q-btn
-            color="white"
-            text-color="primary"
+            color="primary"
+            text-color="white"
             icon="refresh"
             label="Actualizar"
             no-caps
@@ -25,22 +37,44 @@
 
     <!-- Content -->
     <div class="page-content">
-      <TeamProfitabilityDashboard ref="dashboardRef" />
+      <TeamProfitabilityDashboard :season="selectedSeason" />
     </div>
   </q-page>
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import TeamProfitabilityDashboard from 'src/components/TeamProfitabilityDashboard.vue'
+import { useTransactionsStore } from 'src/stores/transactions'
+import { useTeamsStore } from 'src/stores/teams'
+import { useCategoriesStore } from 'src/stores/categories'
+import { computeSeason, getSeasonDates, getSeasonOptions } from 'src/types'
+import type { Season } from 'src/types'
 
-const dashboardRef = ref<InstanceType<typeof TeamProfitabilityDashboard> | null>(null)
+const transactionsStore = useTransactionsStore()
+const teamsStore = useTeamsStore()
+const categoriesStore = useCategoriesStore()
 
-function refreshData() {
-  // The dashboard will reload data on mount, so we can trigger a re-render
-  // In production, this would call a refresh method on the dashboard
-  window.location.reload()
+const currentSeason = computeSeason(new Date())
+const selectedSeason = ref<Season>(currentSeason)
+const seasonOptions = computed(() => getSeasonOptions(5))
+
+async function refreshData() {
+  const { start, end } = getSeasonDates(selectedSeason.value)
+  await Promise.all([
+    transactionsStore.fetchAllInDateRange(start, end),
+    teamsStore.teams.length === 0 ? teamsStore.fetchTeams() : Promise.resolve(),
+    categoriesStore.categories.length === 0 ? categoriesStore.fetchCategories() : Promise.resolve()
+  ])
 }
+
+watch(selectedSeason, () => {
+  refreshData()
+})
+
+onMounted(() => {
+  refreshData()
+})
 </script>
 
 <style lang="scss" scoped>

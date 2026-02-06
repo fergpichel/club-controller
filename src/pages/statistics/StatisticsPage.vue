@@ -14,7 +14,7 @@
           text-color="white"
           :options="[
             { label: 'Mes', value: 'month' },
-            { label: 'Año', value: 'year' }
+            { label: 'Temporada', value: 'season' }
           ]"
         />
       </div>
@@ -278,7 +278,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue';
-import { format, startOfMonth, endOfMonth, startOfYear, endOfYear, subMonths, subYears, addMonths, addYears, isSameMonth, isSameYear } from 'date-fns';
+import { format, startOfMonth, endOfMonth, subMonths, addMonths, isSameMonth } from 'date-fns';
 import { es } from 'date-fns/locale';
 import {
   Chart as ChartJS,
@@ -300,6 +300,8 @@ import { useCategoriesStore } from 'src/stores/categories';
 import SeasonComparison from 'src/components/SeasonComparison.vue';
 import ExpenseTreemap from 'src/components/ExpenseTreemap.vue';
 import TeamRadarChart from 'src/components/TeamRadarChart.vue';
+import { computeSeason, getSeasonOptions, getSeasonDates } from 'src/types';
+import { formatCurrency } from 'src/utils/formatters'
 
 ChartJS.register(
   CategoryScale,
@@ -319,22 +321,26 @@ const teamsStore = useTeamsStore();
 const categoriesStore = useCategoriesStore();
 
 // State
-const viewPeriod = ref<'month' | 'year'>('month');
+const viewPeriod = ref<'month' | 'season'>('month');
 const currentDate = ref(new Date());
+const currentSeason = computeSeason(new Date());
+const selectedSeason = ref(currentSeason);
+const seasonOptions = getSeasonOptions(5);
 
 // Computed
 const periodLabel = computed(() => {
   if (viewPeriod.value === 'month') {
     return format(currentDate.value, 'MMMM yyyy', { locale: es });
   }
-  return format(currentDate.value, 'yyyy');
+  // Season format: "2024/25" -> "Temporada 2024/25"
+  return `Temporada ${selectedSeason.value}`;
 });
 
 const isCurrentPeriod = computed(() => {
   if (viewPeriod.value === 'month') {
     return isSameMonth(currentDate.value, new Date());
   }
-  return isSameYear(currentDate.value, new Date());
+  return selectedSeason.value === currentSeason;
 });
 
 const stats = computed(() => {
@@ -479,20 +485,16 @@ const barChartOptions = {
 };
 
 // Methods
-function formatCurrency(value: number): string {
-  return new Intl.NumberFormat('es-ES', {
-    style: 'currency',
-    currency: 'EUR',
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0
-  }).format(value);
-}
 
 function previousPeriod() {
   if (viewPeriod.value === 'month') {
     currentDate.value = subMonths(currentDate.value, 1);
   } else {
-    currentDate.value = subYears(currentDate.value, 1);
+    // Navigate to previous (older) season - lower index in array
+    const currentIdx = seasonOptions.findIndex(s => s.value === selectedSeason.value);
+    if (currentIdx > 0) {
+      selectedSeason.value = seasonOptions[currentIdx - 1].value;
+    }
   }
 }
 
@@ -500,36 +502,46 @@ function nextPeriod() {
   if (viewPeriod.value === 'month') {
     currentDate.value = addMonths(currentDate.value, 1);
   } else {
-    currentDate.value = addYears(currentDate.value, 1);
+    // Navigate to next (newer) season - higher index in array
+    const currentIdx = seasonOptions.findIndex(s => s.value === selectedSeason.value);
+    if (currentIdx < seasonOptions.length - 1) {
+      selectedSeason.value = seasonOptions[currentIdx + 1].value;
+    }
   }
 }
 
 async function loadStats() {
-  const year = currentDate.value.getFullYear();
-  const month = currentDate.value.getMonth() + 1;
-
   if (viewPeriod.value === 'month') {
+    const year = currentDate.value.getFullYear();
+    const month = currentDate.value.getMonth() + 1;
     await statisticsStore.fetchMonthlyStats(year, month);
     const start = startOfMonth(currentDate.value);
     const end = endOfMonth(currentDate.value);
     await statisticsStore.fetchAllCategoryStats(start, end);
+    await statisticsStore.fetchTrendData(12);
   } else {
-    await statisticsStore.fetchYearlyStats(year);
-    const start = startOfYear(currentDate.value);
-    const end = endOfYear(currentDate.value);
-    await statisticsStore.fetchAllCategoryStats(start, end);
+    // Load season data
+    await statisticsStore.fetchSeasonStats(selectedSeason.value);
+    await statisticsStore.fetchSeasonTrendData(selectedSeason.value);
+    await statisticsStore.fetchSeasonCategoryStats(selectedSeason.value);
   }
-
-  await statisticsStore.fetchTrendData(12);
 }
 
-watch([currentDate, viewPeriod], () => {
+watch([currentDate, viewPeriod, selectedSeason], () => {
   loadStats();
 });
 
 onMounted(async () => {
-  // Ensure teams are loaded for team stats
-  await teamsStore.fetchAll();
+  // Load ALL transactions for both seasons (current + previous) so
+  // SeasonComparison, ExpenseTreemap, and TeamRadarChart have full data
+  const currentSeasonDates = getSeasonDates(currentSeason);
+  const prevStartYear = currentSeasonDates.start.getFullYear() - 1;
+  const previousSeasonStart = new Date(prevStartYear, 6, 1); // Jul 1 previous year
+  await Promise.all([
+    categoriesStore.fetchCategories(), // Ensure categories are loaded for name resolution
+    transactionsStore.fetchAllInDateRange(previousSeasonStart, currentSeasonDates.end),
+    teamsStore.fetchAll()
+  ]);
   loadStats();
 });
 </script>

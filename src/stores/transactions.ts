@@ -14,21 +14,22 @@ import {
   Timestamp,
   limit,
   startAfter,
+  writeBatch,
   QueryDocumentSnapshot,
   DocumentData
 } from 'firebase/firestore'
 import { ref as storageRef, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage'
 import { db, storage } from 'src/boot/firebase'
 import { useAuthStore } from './auth'
-import { isMockEnabled } from 'src/mocks'
-import { transactionsApi } from 'src/services/api'
 import type {
   Transaction,
   TransactionFilters,
   TransactionStatus,
   Attachment
 } from 'src/types'
+import { computeSeason, generateSearchKeywords, UNCATEGORIZED_CATEGORY_ID } from 'src/types'
 import { startOfMonth, endOfMonth } from 'date-fns'
+import { logger } from 'src/utils/logger'
 
 const PAGE_SIZE = 20
 
@@ -69,6 +70,25 @@ export const useTransactionsStore = defineStore('transactions', () => {
     transactions.value.slice(0, 10)
   )
 
+  // Uncategorized transactions
+  const uncategorizedTransactions = computed(() =>
+    transactions.value.filter(t =>
+      !t.categoryId ||
+      t.categoryId === UNCATEGORIZED_CATEGORY_ID ||
+      t.categoryId === `${UNCATEGORIZED_CATEGORY_ID}_income`
+    )
+  )
+
+  // Season-based filtering
+  function getTransactionsBySeason(season: string) {
+    return transactions.value.filter(t => {
+      // If transaction has explicit season override, use it
+      if (t.season) return t.season === season
+      // Otherwise compute from date
+      return computeSeason(new Date(t.date)) === season
+    })
+  }
+
   // Actions
   async function fetchTransactions(filters: TransactionFilters = {}, reset = true) {
     loading.value = true
@@ -83,70 +103,95 @@ export const useTransactionsStore = defineStore('transactions', () => {
     currentFilters.value = filters
 
     try {
-      if (isMockEnabled()) {
-        const result = await transactionsApi.getAll(filters)
-        if (reset) {
-          transactions.value = result
-        } else {
-          transactions.value = [...transactions.value, ...result]
-        }
-        hasMore.value = false
-        loading.value = false
-        return
-      }
-
       const authStore = useAuthStore()
       if (!authStore.clubId) return
 
-      let q = query(
-        collection(db, 'transactions'),
+      const isEmployeeQuery = authStore.isEmployee && !!authStore.user?.uid
+
+      // Build constraints array first, then create single query.
+      // For employees we skip orderBy('date') to avoid requiring a composite
+      // index on (clubId, createdBy, date). Sorting is done client-side.
+      const constraints = [
         where('clubId', '==', authStore.clubId),
-        orderBy('date', 'desc'),
+        ...(!isEmployeeQuery ? [orderBy('date', 'desc')] : []),
         limit(PAGE_SIZE)
-      )
+      ]
+
+      // Employee: only see own transactions
+      if (isEmployeeQuery) {
+        constraints.push(where('createdBy', '==', authStore.user!.uid))
+      }
 
       // Apply filters
       if (filters.type) {
-        q = query(q, where('type', '==', filters.type))
+        constraints.push(where('type', '==', filters.type))
       }
 
       if (filters.status) {
-        q = query(q, where('status', '==', filters.status))
+        constraints.push(where('status', '==', filters.status))
       }
 
       if (filters.categoryId) {
-        q = query(q, where('categoryId', '==', filters.categoryId))
+        constraints.push(where('categoryId', '==', filters.categoryId))
       }
 
       if (filters.teamId) {
-        q = query(q, where('teamId', '==', filters.teamId))
+        constraints.push(where('teamId', '==', filters.teamId))
       }
 
       if (filters.projectId) {
-        q = query(q, where('projectId', '==', filters.projectId))
+        constraints.push(where('projectId', '==', filters.projectId))
       }
 
       if (filters.dateFrom) {
-        q = query(q, where('date', '>=', Timestamp.fromDate(filters.dateFrom)))
+        constraints.push(where('date', '>=', Timestamp.fromDate(filters.dateFrom)))
       }
 
       if (filters.dateTo) {
-        q = query(q, where('date', '<=', Timestamp.fromDate(filters.dateTo)))
+        constraints.push(where('date', '<=', Timestamp.fromDate(filters.dateTo)))
       }
+
+      // Season filter
+      if (filters.season) {
+        constraints.push(where('season', '==', filters.season))
+      }
+
+      // Text search via searchKeywords (server-side)
+      if (filters.searchQuery) {
+        const normalized = filters.searchQuery
+          .toLowerCase()
+          .normalize('NFD')
+          .replace(/[\u0300-\u036f]/g, '')
+          .trim()
+        if (normalized.length >= 2) {
+          constraints.push(where('searchKeywords', 'array-contains', normalized))
+        }
+      }
+
+      // Note: uncategorized filter is handled client-side because Firestore
+      // doesn't support OR queries like (categoryId == null OR categoryId == 'uncategorized')
+      // We fetch all and filter in the component
 
       // Pagination
       if (lastDoc.value) {
-        q = query(q, startAfter(lastDoc.value))
+        constraints.push(startAfter(lastDoc.value))
       }
 
+      const q = query(collection(db, 'transactions'), ...constraints)
+
       const snapshot = await getDocs(q)
-      const newTransactions = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data(),
-        date: doc.data().date?.toDate() || new Date(),
-        createdAt: doc.data().createdAt?.toDate() || new Date(),
-        updatedAt: doc.data().updatedAt?.toDate() || new Date()
+      const newTransactions = snapshot.docs.map(d => ({
+        id: d.id,
+        ...d.data(),
+        date: d.data().date?.toDate() || new Date(),
+        createdAt: d.data().createdAt?.toDate() || new Date(),
+        updatedAt: d.data().updatedAt?.toDate() || new Date()
       })) as Transaction[]
+
+      // Client-side sort for employee queries (no orderBy in Firestore)
+      if (isEmployeeQuery) {
+        newTransactions.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+      }
 
       if (reset) {
         transactions.value = newTransactions
@@ -157,7 +202,7 @@ export const useTransactionsStore = defineStore('transactions', () => {
       lastDoc.value = snapshot.docs[snapshot.docs.length - 1] || null
       hasMore.value = snapshot.docs.length === PAGE_SIZE
     } catch (e) {
-      console.error('Error fetching transactions:', e)
+      logger.error('Error fetching transactions:', e)
       error.value = 'Error al cargar transacciones'
     } finally {
       loading.value = false
@@ -174,6 +219,61 @@ export const useTransactionsStore = defineStore('transactions', () => {
     })
   }
 
+  /**
+   * Fetch ALL transactions within a date range (no pagination).
+   * Used by charts and statistics that need the full season data.
+   *
+   * Uses the same Firestore query pattern (clubId + status + date range)
+   * as statisticsStore.fetchSeasonTrendData, ensuring the existing
+   * composite index (clubId, status, date) is leveraged.
+   */
+  async function fetchAllInDateRange(startDate: Date, endDate: Date) {
+    loading.value = true
+    error.value = null
+
+    try {
+      const authStore = useAuthStore()
+      if (!authStore.clubId) return
+
+      // Match the proven query pattern: clubId + status(in) + date range
+      // This reuses the composite index (clubId, status, date) that already exists.
+      let q = query(
+        collection(db, 'transactions'),
+        where('clubId', '==', authStore.clubId),
+        where('status', 'in', ['approved', 'pending', 'paid']),
+        where('date', '>=', Timestamp.fromDate(startDate)),
+        where('date', '<=', Timestamp.fromDate(endDate))
+      )
+
+      // Employee: only see own transactions
+      if (authStore.isEmployee && authStore.user?.uid) {
+        q = query(q, where('createdBy', '==', authStore.user.uid))
+      }
+
+      const snapshot = await getDocs(q)
+      const results = snapshot.docs.map(d => ({
+        id: d.id,
+        ...d.data(),
+        date: d.data().date?.toDate() || new Date(),
+        createdAt: d.data().createdAt?.toDate() || new Date(),
+        updatedAt: d.data().updatedAt?.toDate() || new Date()
+      })) as Transaction[]
+
+      // Sort client-side (most recent first) since we removed orderBy
+      results.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+      transactions.value = results
+
+      // No pagination state when loading all
+      lastDoc.value = null
+      hasMore.value = false
+    } catch (e) {
+      logger.error('Error fetching all transactions in range:', e)
+      error.value = 'Error al cargar transacciones'
+    } finally {
+      loading.value = false
+    }
+  }
+
   async function loadMore() {
     if (!hasMore.value || loading.value) return
     await fetchTransactions(currentFilters.value, false)
@@ -184,37 +284,49 @@ export const useTransactionsStore = defineStore('transactions', () => {
     loading.value = true
     error.value = null
 
-    try {
-      if (isMockEnabled()) {
-        const newTransaction = await transactionsApi.create({
-          ...data,
-          clubId: 'mock',
-          createdBy: authStore.user?.uid || 'mock_user',
-          createdByName: authStore.user?.displayName,
-          status: authStore.canApprove ? 'approved' : 'pending'
-        })
-        transactions.value = [newTransaction, ...transactions.value]
-        loading.value = false
-        return newTransaction
-      }
+    // Auto-compute season if not explicitly set
+    const season = data.season || computeSeason(new Date(data.date))
 
+    try {
       if (!authStore.clubId || !authStore.user) return null
 
-      const transactionData = {
+      // Generate search keywords for server-side text search
+      const searchKeywords = generateSearchKeywords({
+        description: data.description,
+        categoryName: data.categoryName,
+        teamName: data.teamName,
+        supplierName: data.supplierName,
+        sponsorName: data.sponsorName,
+        reference: data.reference,
+        invoiceNumber: data.invoiceNumber,
+        notes: data.notes
+      })
+
+      const rawData = {
         ...data,
+        season,
+        searchKeywords,
         clubId: authStore.clubId,
         createdBy: authStore.user.uid,
         createdByName: authStore.user.displayName,
         status: authStore.canApprove ? 'approved' : 'pending' as TransactionStatus,
         date: Timestamp.fromDate(data.date),
+        paidDate: data.paidDate ? Timestamp.fromDate(data.paidDate) : null,
+        dueDate: data.dueDate ? Timestamp.fromDate(data.dueDate) : null,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp()
       }
+
+      // Remove undefined values (Firebase doesn't accept them)
+      const transactionData = Object.fromEntries(
+        Object.entries(rawData).filter(([, v]) => v !== undefined)
+      )
 
       const docRef = await addDoc(collection(db, 'transactions'), transactionData)
 
       const newTransaction: Transaction = {
         ...data,
+        season,
         id: docRef.id,
         clubId: authStore.clubId,
         createdBy: authStore.user.uid,
@@ -225,9 +337,32 @@ export const useTransactionsStore = defineStore('transactions', () => {
       }
 
       transactions.value = [newTransaction, ...transactions.value]
+
+      // If the transaction is pending (created by employee), notify approvers
+      if (newTransaction.status === 'pending') {
+        import('./notifications').then(({ useNotificationsStore }) => {
+          import('./auth').then(({ useAuthStore: getAuth }) => {
+            const auth = getAuth()
+            const notifStore = useNotificationsStore()
+            // Notify each club member who can approve
+            for (const member of auth.clubMembers) {
+              if (['admin', 'manager', 'controller'].includes(member.role) && member.uid !== auth.user?.uid) {
+                notifStore.createNotification({
+                  userId: member.uid,
+                  type: 'transaction_created',
+                  title: 'Nueva transacción pendiente',
+                  message: `${newTransaction.createdByName || 'Un empleado'} registró "${newTransaction.description}" (${newTransaction.amount.toFixed(2)}€)`,
+                  link: '/pending'
+                })
+              }
+            }
+          })
+        })
+      }
+
       return newTransaction
     } catch (e) {
-      console.error('Error creating transaction:', e)
+      logger.error('Error creating transaction:', e)
       error.value = 'Error al crear transacción'
       return null
     } finally {
@@ -240,28 +375,45 @@ export const useTransactionsStore = defineStore('transactions', () => {
     error.value = null
 
     try {
-      if (isMockEnabled()) {
-        await transactionsApi.update(id, data)
-        const index = transactions.value.findIndex(t => t.id === id)
-        if (index !== -1) {
-          transactions.value[index] = {
-            ...transactions.value[index],
-            ...data,
-            updatedAt: new Date()
-          }
-        }
-        loading.value = false
-        return true
-      }
+      // Regenerate search keywords if any searchable field changed
+      const searchableFields = ['description', 'categoryName', 'teamName', 'supplierName', 'sponsorName', 'reference', 'invoiceNumber', 'notes'] as const
+      const hasSearchableChange = searchableFields.some(f => f in data)
 
-      const updateData = {
+      const rawUpdateData: Record<string, unknown> = {
         ...data,
         updatedAt: serverTimestamp()
       }
 
-      if (data.date) {
-        updateData.date = Timestamp.fromDate(data.date) as unknown as Date
+      if (hasSearchableChange) {
+        // Merge with existing transaction data to regenerate full keywords
+        const existing = transactions.value.find(t => t.id === id)
+        const merged = { ...existing, ...data }
+        rawUpdateData.searchKeywords = generateSearchKeywords({
+          description: merged.description || '',
+          categoryName: merged.categoryName,
+          teamName: merged.teamName,
+          supplierName: merged.supplierName,
+          sponsorName: merged.sponsorName,
+          reference: merged.reference,
+          invoiceNumber: merged.invoiceNumber,
+          notes: merged.notes
+        })
       }
+
+      if (data.date) {
+        rawUpdateData.date = Timestamp.fromDate(data.date)
+      }
+      if (data.paidDate) {
+        rawUpdateData.paidDate = Timestamp.fromDate(data.paidDate)
+      }
+      if (data.dueDate) {
+        rawUpdateData.dueDate = Timestamp.fromDate(data.dueDate)
+      }
+
+      // Remove undefined values (Firebase doesn't accept them)
+      const updateData = Object.fromEntries(
+        Object.entries(rawUpdateData).filter(([, v]) => v !== undefined)
+      )
 
       await updateDoc(doc(db, 'transactions', id), updateData)
 
@@ -276,7 +428,7 @@ export const useTransactionsStore = defineStore('transactions', () => {
 
       return true
     } catch (e) {
-      console.error('Error updating transaction:', e)
+      logger.error('Error updating transaction:', e)
       error.value = 'Error al actualizar transacción'
       return false
     } finally {
@@ -285,17 +437,16 @@ export const useTransactionsStore = defineStore('transactions', () => {
   }
 
   async function deleteTransaction(id: string) {
+    const authStore = useAuthStore()
+    if (!authStore.isAdmin && !['admin', 'manager'].includes(authStore.userRole)) {
+      logger.error('Permission denied: only admin/manager can delete transactions')
+      return false
+    }
+
     loading.value = true
     error.value = null
 
     try {
-      if (isMockEnabled()) {
-        await transactionsApi.delete(id)
-        transactions.value = transactions.value.filter(t => t.id !== id)
-        loading.value = false
-        return true
-      }
-
       // Delete attachments first
       const transaction = transactions.value.find(t => t.id === id)
       if (transaction?.attachments) {
@@ -303,7 +454,7 @@ export const useTransactionsStore = defineStore('transactions', () => {
           try {
             await deleteObject(storageRef(storage, attachment.url))
           } catch (e) {
-            console.warn('Could not delete attachment:', e)
+            logger.warn('Could not delete attachment:', e)
           }
         }
       }
@@ -312,7 +463,7 @@ export const useTransactionsStore = defineStore('transactions', () => {
       transactions.value = transactions.value.filter(t => t.id !== id)
       return true
     } catch (e) {
-      console.error('Error deleting transaction:', e)
+      logger.error('Error deleting transaction:', e)
       error.value = 'Error al eliminar transacción'
       return false
     } finally {
@@ -323,71 +474,155 @@ export const useTransactionsStore = defineStore('transactions', () => {
   async function approveTransaction(id: string) {
     const authStore = useAuthStore()
     if (!authStore.user) return false
-
-    if (isMockEnabled()) {
-      await transactionsApi.approve(id, authStore.user.uid)
-      const index = transactions.value.findIndex(t => t.id === id)
-      if (index !== -1) {
-        transactions.value[index] = {
-          ...transactions.value[index],
-          status: 'approved',
-          approvedBy: authStore.user.uid,
-          approvedAt: new Date(),
-          updatedAt: new Date()
-        }
-      }
-      return true
+    if (!authStore.canApprove) {
+      logger.error('Permission denied: cannot approve transactions')
+      return false
     }
 
-    return updateTransaction(id, {
+    const result = await updateTransaction(id, {
       status: 'approved',
       approvedBy: authStore.user.uid,
       approvedAt: new Date()
     })
+
+    // Notify the transaction creator
+    if (result) {
+      const tx = transactions.value.find(t => t.id === id)
+      if (tx && tx.createdBy !== authStore.user.uid) {
+        const { useNotificationsStore } = await import('./notifications')
+        const notificationsStore = useNotificationsStore()
+        notificationsStore.createNotification({
+          userId: tx.createdBy,
+          type: 'transaction_approved',
+          title: 'Transacción aprobada',
+          message: `"${tx.description}" (${tx.amount.toFixed(2)}€) ha sido aprobada`,
+          link: `/transactions/${id}`
+        })
+      }
+    }
+
+    return result
   }
 
   async function rejectTransaction(id: string) {
-    if (isMockEnabled()) {
-      await transactionsApi.reject(id)
-      const index = transactions.value.findIndex(t => t.id === id)
-      if (index !== -1) {
-        transactions.value[index] = {
-          ...transactions.value[index],
-          status: 'rejected',
-          updatedAt: new Date()
-        }
-      }
-      return true
+    const authStore = useAuthStore()
+    if (!authStore.user) return false
+    if (!authStore.canApprove) {
+      logger.error('Permission denied: cannot reject transactions')
+      return false
     }
 
-    return updateTransaction(id, {
+    const result = await updateTransaction(id, {
       status: 'rejected'
     })
+
+    // Notify the transaction creator
+    if (result) {
+      const tx = transactions.value.find(t => t.id === id)
+      if (tx && tx.createdBy !== authStore.user.uid) {
+        const { useNotificationsStore } = await import('./notifications')
+        const notificationsStore = useNotificationsStore()
+        notificationsStore.createNotification({
+          userId: tx.createdBy,
+          type: 'transaction_rejected',
+          title: 'Transacción rechazada',
+          message: `"${tx.description}" (${tx.amount.toFixed(2)}€) ha sido rechazada`,
+          link: `/transactions/${id}`
+        })
+      }
+    }
+
+    return result
   }
+
+  /**
+   * Approve multiple transactions atomically using a Firestore batch write.
+   * Much faster and consistent than individual updates in a loop.
+   */
+  async function batchApproveTransactions(ids: string[]): Promise<boolean> {
+    const authStore = useAuthStore()
+    if (!authStore.user || !authStore.canApprove) {
+      logger.error('Permission denied: cannot approve transactions')
+      return false
+    }
+
+    if (ids.length === 0) return true
+
+    loading.value = true
+    error.value = null
+
+    try {
+      // Firestore batches max out at 500 writes
+      const chunks: string[][] = []
+      for (let i = 0; i < ids.length; i += 500) {
+        chunks.push(ids.slice(i, i + 500))
+      }
+
+      for (const chunk of chunks) {
+        const batch = writeBatch(db)
+        for (const id of chunk) {
+          batch.update(doc(db, 'transactions', id), {
+            status: 'approved',
+            approvedBy: authStore.user.uid,
+            approvedAt: Timestamp.now(),
+            updatedAt: serverTimestamp()
+          })
+        }
+        await batch.commit()
+      }
+
+      // Update local state
+      for (const id of ids) {
+        const index = transactions.value.findIndex(t => t.id === id)
+        if (index !== -1) {
+          transactions.value[index] = {
+            ...transactions.value[index],
+            status: 'approved',
+            approvedBy: authStore.user.uid,
+            approvedAt: new Date(),
+            updatedAt: new Date()
+          }
+        }
+      }
+
+      return true
+    } catch (e) {
+      logger.error('Error batch approving transactions:', e)
+      error.value = 'Error al aprobar transacciones en lote'
+      return false
+    } finally {
+      loading.value = false
+    }
+  }
+
+  // Upload constraints
+  const MAX_UPLOAD_SIZE = 10 * 1024 * 1024 // 10 MB
+  const ALLOWED_UPLOAD_TYPES = [
+    'image/jpeg', 'image/png', 'image/webp', 'image/gif',
+    'application/pdf'
+  ]
 
   async function uploadAttachment(transactionId: string, file: File): Promise<Attachment | null> {
     const authStore = useAuthStore()
-    if (!authStore.clubId && !isMockEnabled()) return null
+    if (!authStore.clubId) return null
+
+    // Validate file size
+    if (file.size > MAX_UPLOAD_SIZE) {
+      error.value = `El archivo excede el límite de ${MAX_UPLOAD_SIZE / 1024 / 1024}MB`
+      return null
+    }
+
+    // Validate file type
+    if (!ALLOWED_UPLOAD_TYPES.includes(file.type)) {
+      error.value = 'Tipo de archivo no permitido. Solo imágenes y PDF.'
+      return null
+    }
 
     try {
-      if (isMockEnabled()) {
-        // Mock attachment
-        const attachment: Attachment = {
-          id: `${Date.now()}`,
-          name: file.name,
-          url: URL.createObjectURL(file),
-          type: file.type,
-          size: file.size,
-          uploadedAt: new Date()
-        }
-        const transaction = transactions.value.find(t => t.id === transactionId)
-        const attachments = [...(transaction?.attachments || []), attachment]
-        await updateTransaction(transactionId, { attachments })
-        return attachment
-      }
-
       const timestamp = Date.now()
-      const path = `clubs/${authStore.clubId}/transactions/${transactionId}/${timestamp}_${file.name}`
+      // Sanitize file name: remove dangerous characters
+      const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
+      const path = `clubs/${authStore.clubId}/transactions/${transactionId}/${timestamp}_${safeName}`
       const fileRef = storageRef(storage, path)
 
       await uploadBytes(fileRef, file)
@@ -395,7 +630,7 @@ export const useTransactionsStore = defineStore('transactions', () => {
 
       const attachment: Attachment = {
         id: `${timestamp}`,
-        name: file.name,
+        name: safeName,
         url,
         type: file.type,
         size: file.size,
@@ -410,7 +645,7 @@ export const useTransactionsStore = defineStore('transactions', () => {
 
       return attachment
     } catch (e) {
-      console.error('Error uploading attachment:', e)
+      logger.error('Error uploading attachment:', e)
       return null
     }
   }
@@ -423,16 +658,14 @@ export const useTransactionsStore = defineStore('transactions', () => {
     if (!attachment) return false
 
     try {
-      if (!isMockEnabled()) {
-        await deleteObject(storageRef(storage, attachment.url))
-      }
+      await deleteObject(storageRef(storage, attachment.url))
 
       const attachments = transaction.attachments.filter(a => a.id !== attachmentId)
       await updateTransaction(transactionId, { attachments })
 
       return true
     } catch (e) {
-      console.error('Error deleting attachment:', e)
+      logger.error('Error deleting attachment:', e)
       return false
     }
   }
@@ -448,6 +681,58 @@ export const useTransactionsStore = defineStore('transactions', () => {
     currentFilters.value = {}
   }
 
+  /**
+   * Migration: Generate searchKeywords for all existing transactions
+   * that don't have them yet. Call from Settings > Data Migration.
+   */
+  async function migrateSearchKeywords(
+    onProgress?: (done: number, total: number) => void
+  ): Promise<number> {
+    const authStore = useAuthStore()
+    if (!authStore.clubId) return 0
+
+    // Fetch ALL transactions without keywords
+    const allDocsQuery = query(
+      collection(db, 'transactions'),
+      where('clubId', '==', authStore.clubId)
+    )
+
+    const snapshot = await getDocs(allDocsQuery)
+    let updated = 0
+    const total = snapshot.docs.length
+
+    for (const docSnap of snapshot.docs) {
+      const data = docSnap.data()
+
+      // Skip if already has keywords
+      if (data.searchKeywords && data.searchKeywords.length > 0) {
+        updated++
+        onProgress?.(updated, total)
+        continue
+      }
+
+      const keywords = generateSearchKeywords({
+        description: data.description || '',
+        categoryName: data.categoryName,
+        teamName: data.teamName,
+        supplierName: data.supplierName,
+        sponsorName: data.sponsorName,
+        reference: data.reference,
+        invoiceNumber: data.invoiceNumber,
+        notes: data.notes
+      })
+
+      await updateDoc(doc(db, 'transactions', docSnap.id), {
+        searchKeywords: keywords
+      })
+
+      updated++
+      onProgress?.(updated, total)
+    }
+
+    return updated
+  }
+
   return {
     // State
     transactions,
@@ -460,23 +745,28 @@ export const useTransactionsStore = defineStore('transactions', () => {
     incomeTransactions,
     expenseTransactions,
     pendingTransactions,
+    uncategorizedTransactions,
     totalIncome,
     totalExpenses,
     balance,
     recentTransactions,
+    getTransactionsBySeason,
 
     // Actions
     fetchTransactions,
     fetchMonthTransactions,
+    fetchAllInDateRange,
     loadMore,
     createTransaction,
     updateTransaction,
     deleteTransaction,
     approveTransaction,
+    batchApproveTransactions,
     rejectTransaction,
     uploadAttachment,
     deleteAttachment,
     getTransactionById,
-    clearTransactions
+    clearTransactions,
+    migrateSearchKeywords
   }
 })

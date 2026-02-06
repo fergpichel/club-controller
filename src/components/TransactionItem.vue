@@ -21,14 +21,14 @@
       <div class="transaction-meta">
         <span>{{ categoryName }}</span>
         <span v-if="transaction.teamName">{{ transaction.teamName }}</span>
-        <span>{{ formatDate(transaction.date) }}</span>
+        <span>{{ formatDateRelative(transaction.date) }}</span>
       </div>
     </div>
 
     <!-- Amount & Status -->
     <div class="transaction-right">
-      <p class="transaction-amount" :class="transaction.type">
-        {{ transaction.type === 'income' ? '+' : '-' }}{{ formatCurrency(transaction.amount) }}
+      <p class="transaction-amount" :class="[transaction.type, { 'is-masked': isMasked }]">
+        {{ isMasked ? '***,** €' : `${transaction.type === 'income' ? '+' : '-'}${formatCurrency(transaction.amount)}` }}
       </p>
       <q-badge
         v-if="transaction.status === 'pending'"
@@ -47,19 +47,25 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import { format, isToday, isYesterday } from 'date-fns'
-import { es } from 'date-fns/locale'
 import { useCategoriesStore } from 'src/stores/categories'
+import { useSensitiveData } from 'src/composables/useSensitiveData'
 import type { Transaction } from 'src/types'
+import { formatCurrency, formatDateRelative } from 'src/utils/formatters'
 
 const props = defineProps<{
   transaction: Transaction
 }>()
 
 const categoriesStore = useCategoriesStore()
+const { isSensitiveTransaction, canViewSensitive } = useSensitiveData()
 
 const category = computed(() => {
   return categoriesStore.getCategoryById(props.transaction.categoryId)
+})
+
+/** Whether the amount should be masked for the current user */
+const isMasked = computed(() => {
+  return !canViewSensitive.value && isSensitiveTransaction(props.transaction)
 })
 
 const categoryName = computed(() => {
@@ -74,21 +80,6 @@ const categoryColor = computed(() => {
   return category.value?.color || '#8898AA'
 })
 
-function formatCurrency(value: number): string {
-  return new Intl.NumberFormat('es-ES', {
-    style: 'currency',
-    currency: 'EUR',
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 2
-  }).format(value)
-}
-
-function formatDate(date: Date): string {
-  const d = new Date(date)
-  if (isToday(d)) return 'Hoy'
-  if (isYesterday(d)) return 'Ayer'
-  return format(d, 'd MMM', { locale: es })
-}
 </script>
 
 <style lang="scss" scoped>
@@ -207,6 +198,12 @@ function formatDate(date: Date): string {
 
   &.expense {
     color: var(--color-danger);
+  }
+
+  &.is-masked {
+    color: var(--color-text-muted);
+    font-style: italic;
+    letter-spacing: 1px;
   }
 }
 

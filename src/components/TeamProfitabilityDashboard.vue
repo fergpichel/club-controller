@@ -247,29 +247,29 @@
           dense
           :pagination="{ rowsPerPage: 25 }"
         >
-          <template #body-cell-teamName="props">
-            <q-td :props="props">
+          <template #body-cell-teamName="slotProps">
+            <q-td :props="slotProps">
               <div class="table-team-cell">
-                <div class="team-dot" :style="{ backgroundColor: props.row.teamColor }"></div>
-                <span>{{ props.row.teamName }}</span>
+                <div class="team-dot" :style="{ backgroundColor: slotProps.row.teamColor }"></div>
+                <span>{{ slotProps.row.teamName }}</span>
               </div>
             </q-td>
           </template>
-          <template #body-cell-status="props">
-            <q-td :props="props">
-              <q-badge :color="getStatusBadgeColor(props.row.status)">
-                {{ getStatusLabel(props.row.status) }}
+          <template #body-cell-status="slotProps">
+            <q-td :props="slotProps">
+              <q-badge :color="getStatusBadgeColor(slotProps.row.status)">
+                {{ getStatusLabel(slotProps.row.status) }}
               </q-badge>
             </q-td>
           </template>
-          <template #body-cell-balance="props">
-            <q-td :props="props" :class="props.row.balance >= 0 ? 'text-positive' : 'text-negative'">
-              {{ formatCurrency(props.row.balance) }}
+          <template #body-cell-balance="slotProps">
+            <q-td :props="slotProps" :class="slotProps.row.balance >= 0 ? 'text-positive' : 'text-negative'">
+              {{ formatCurrency(slotProps.row.balance) }}
             </q-td>
           </template>
-          <template #body-cell-feeGap="props">
-            <q-td :props="props" :class="props.row.feeGap >= 0 ? 'text-positive' : 'text-negative'">
-              {{ formatCurrency(props.row.feeGap) }}
+          <template #body-cell-feeGap="slotProps">
+            <q-td :props="slotProps" :class="slotProps.row.feeGap >= 0 ? 'text-positive' : 'text-negative'">
+              {{ formatCurrency(slotProps.row.feeGap) }}
             </q-td>
           </template>
         </q-table>
@@ -279,7 +279,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useTransactionsStore } from 'src/stores/transactions'
 import { useTeamsStore } from 'src/stores/teams'
 import { useCategoriesStore } from 'src/stores/categories'
@@ -287,9 +287,16 @@ import {
   calculateTeamFinancials,
   generateTeamAlerts,
   calculateClubProfitability,
-  formatCurrency
 } from 'src/services/profitabilityAnalysis'
-import type { TeamFinancials, TeamProfitabilityAlert, ClubProfitabilitySummary, AgeGroup } from 'src/types'
+import { formatCurrency } from 'src/utils/formatters'
+import { computeSeason } from 'src/types'
+import type { TeamFinancials, TeamProfitabilityAlert, ClubProfitabilitySummary, AgeGroup, Season } from 'src/types'
+
+const props = withDefaults(defineProps<{
+  season?: Season
+}>(), {
+  season: () => computeSeason(new Date())
+})
 
 const transactionsStore = useTransactionsStore()
 const teamsStore = useTeamsStore()
@@ -386,21 +393,22 @@ function getCoverageColor(percent: number): string {
   return 'negative'
 }
 
-async function loadData() {
-  // Ensure data is loaded
-  await Promise.all([
-    teamsStore.fetchTeams(),
-    transactionsStore.fetchTransactions({}),
-    categoriesStore.fetchCategories()
-  ])
-
-  const teams = teamsStore.activeTeams
+function recalculate() {
+  // Filter teams by the selected season (only show teams that belong to this season)
+  const teams = teamsStore.getTeamsBySeason(props.season).filter(t => t.isActive)
   const transactions = transactionsStore.transactions
   const categories = categoriesStore.categories
 
-  // Calculate financials for each team
+  // If there are no teams for this season, show empty state
+  if (teams.length === 0) {
+    teamFinancials.value = []
+    clubSummary.value = null
+    topAlerts.value = []
+    return
+  }
+
+  // Calculate financials for each team (even if transactions are empty → shows 0 values)
   teamFinancials.value = teams.map(team => {
-    // Estimate monthly fee based on team (would be real data in production)
     const estimatedFee = team.ageGroup === 'senior' ? 35 : 
       ['juvenil', 'cadete'].includes(team.ageGroup || '') ? 30 : 25
     sampleFees[team.id] = estimatedFee
@@ -425,9 +433,19 @@ async function loadData() {
   clubSummary.value = calculateClubProfitability(teams, transactions, categories, sampleFees)
 }
 
-onMounted(() => {
-  loadData()
-})
+// Recalculate whenever season, transactions, teams or categories change
+watch(
+  [
+    () => props.season,
+    () => transactionsStore.transactions,
+    () => teamsStore.teams,
+    () => categoriesStore.categories
+  ],
+  () => {
+    recalculate()
+  },
+  { immediate: true }
+)
 </script>
 
 <style lang="scss" scoped>
