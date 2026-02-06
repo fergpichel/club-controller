@@ -6,9 +6,25 @@
         <p class="auth-subtitle">
           {{ pendingInvitation
             ? `Has sido invitado a unirte a ${pendingInvitation.clubName}`
-            : 'Registra tu club y comienza a gestionar sus finanzas'
+            : registrationOpen
+              ? 'Registra tu club y comienza a gestionar sus finanzas'
+              : 'El registro está disponible solo por invitación'
           }}
         </p>
+      </q-card-section>
+
+      <!-- Registration closed banner -->
+      <q-card-section v-if="!registrationOpen && !pendingInvitation && !loadingConfig">
+        <q-banner class="bg-orange-1 text-orange-9 q-mb-md" rounded>
+          <template #avatar><q-icon name="lock" color="orange" /></template>
+          <div>
+            <strong>Registro cerrado</strong>
+            <p class="q-mb-none q-mt-xs" style="font-size: 0.85rem">
+              Para unirte, pide a un administrador que te envíe una invitación.
+              Si tienes una, introduce tu email abajo y se detectará automáticamente.
+            </p>
+          </div>
+        </q-banner>
       </q-card-section>
 
       <q-card-section>
@@ -47,9 +63,9 @@
             </template>
           </q-input>
 
-          <!-- Only show club name when creating a new club (no invitation) -->
+          <!-- Only show club name when creating a new club (no invitation, registration open) -->
           <q-input
-            v-if="!pendingInvitation"
+            v-if="!pendingInvitation && registrationOpen"
             v-model="clubName"
             label="Nombre del club"
             outlined
@@ -121,7 +137,7 @@
             class="full-width btn-primary"
             size="lg"
             :loading="authStore.loading"
-            :disable="!acceptTerms"
+            :disable="!acceptTerms || (!registrationOpen && !pendingInvitation)"
           />
         </q-form>
       </q-card-section>
@@ -144,7 +160,7 @@
 import { ref, onMounted } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import { useAuthStore } from 'src/stores/auth';
-import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
+import { addDoc, collection, serverTimestamp, doc, getDoc } from 'firebase/firestore';
 import { db } from 'src/boot/firebase';
 import type { ClubInvitation, UserRole } from 'src/types';
 import { ROLE_LABELS } from 'src/types';
@@ -163,6 +179,8 @@ const showPassword = ref(false);
 const acceptTerms = ref(false);
 const pendingInvitation = ref<ClubInvitation | null>(null);
 const checkingInvitation = ref(false);
+const registrationOpen = ref(true); // default open until config loads
+const loadingConfig = ref(true);
 
 function roleLabel(role: UserRole): string {
   return ROLE_LABELS[role] || role
@@ -188,6 +206,9 @@ async function handleRegister() {
   if (password.value !== confirmPassword.value) return;
   if (!acceptTerms.value) return;
 
+  // Block if registration closed and no invitation
+  if (!registrationOpen.value && !pendingInvitation.value) return;
+
   try {
     let success: boolean
 
@@ -200,7 +221,7 @@ async function handleRegister() {
         pendingInvitation.value
       )
     } else {
-      // Create new club + register as admin
+      // Create new club + register as admin (only if registration is open)
       if (!clubName.value) return
 
       const clubRef = await addDoc(collection(db, 'clubs'), {
@@ -231,7 +252,28 @@ async function handleRegister() {
   }
 }
 
+async function loadAppConfig() {
+  loadingConfig.value = true
+  try {
+    const configDoc = await getDoc(doc(db, 'config', 'app'))
+    if (configDoc.exists()) {
+      registrationOpen.value = configDoc.data().registrationOpen === true
+    } else {
+      // If config doc doesn't exist yet, allow registration (first-time setup)
+      registrationOpen.value = true
+    }
+  } catch (e) {
+    logger.error('Error loading app config:', e)
+    // Default to closed if we can't read config (safer)
+    registrationOpen.value = false
+  } finally {
+    loadingConfig.value = false
+  }
+}
+
 onMounted(() => {
+  loadAppConfig()
+
   // Pre-fill email from query param (e.g. from invitation link)
   const inviteEmail = route.query.email as string
   if (inviteEmail) {
@@ -284,3 +326,6 @@ onMounted(() => {
   }
 }
 </style>
+
+
+

@@ -1,4 +1,4 @@
-# Club Controller 🏆
+# Grootter Finance 🏆
 
 Aplicación web PWA para la gestión financiera de clubes deportivos, desarrollada con Vue 3, Quasar Framework y Firebase.
 

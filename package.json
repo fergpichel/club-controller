@@ -2,8 +2,8 @@
   "name": "club-controller",
   "version": "1.0.0",
   "description": "Financial management app for sports clubs",
-  "productName": "Club Controller",
-  "author": "Club Controller Team",
+  "productName": "Grootter Finance",
+  "author": "Grootter Finance Team",
   "private": true,
   "scripts": {
     "dev": "quasar dev",

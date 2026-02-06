@@ -19,6 +19,14 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
     }
 
+    function appConfig() {
+      return get(/databases/$(database)/documents/config/app).data;
+    }
+
+    function isRegistrationOpen() {
+      return appConfig().registrationOpen == true;
+    }
+
     function belongsToClub(clubId) {
       return isAuth() && userDoc().clubId == clubId;
     }
@@ -49,7 +57,9 @@ service cloud.firestore {
         && (uid() == userId || userDoc().clubId == resource.data.clubId);
 
       // User can create their own document during registration
-      allow create: if isAuth() && uid() == userId;
+      // Only allowed if registration is open OR user has a clubId (coming from invitation)
+      allow create: if isAuth() && uid() == userId
+        && (isRegistrationOpen() || request.resource.data.clubId != '');
 
       // Users can update their own profile BUT cannot change role or clubId
       allow update: if isAuth() && uid() == userId
@@ -70,8 +80,8 @@ service cloud.firestore {
     match /clubs/{clubId} {
       allow read: if isAuth() && belongsToClub(clubId);
 
-      // Anyone can create a club (during registration of a new club)
-      allow create: if isAuth();
+      // Only allowed when registration is open (creating a new club)
+      allow create: if isAuth() && isRegistrationOpen();
 
       // Only admin/manager can update club settings
       allow update: if isAdminOrManager(clubId);
@@ -234,6 +244,17 @@ service cloud.firestore {
 
       // Users can delete their own notifications
       allow delete: if isAuth() && resource.data.userId == uid();
+    }
+
+    // ──────────────────────────────────────────────
+    // APP CONFIG (global settings)
+    // ──────────────────────────────────────────────
+    match /config/{docId} {
+      // Anyone can read (needed to check registrationOpen before login)
+      allow read: if true;
+
+      // Only editable from Firebase Console (no client writes)
+      allow write: if false;
     }
 
     // ──────────────────────────────────────────────
