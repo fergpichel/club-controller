@@ -83,6 +83,7 @@
             <q-select
               v-model="parentCategoryId"
               :options="parentCategoryFilter.options.value"
+              :display-value="parentCategoryDisplayName"
               label="Categoría"
               outlined
               emit-value
@@ -114,6 +115,7 @@
               v-if="subcategoryOptions.length > 0"
               v-model="subcategoryId"
               :options="subcategoryFilter.options.value"
+              :display-value="subcategoryDisplayName"
               label="Subcategoría (opcional)"
               outlined
               emit-value
@@ -563,6 +565,17 @@ const subcategoryOptions = computed(() => {
     color: c.color
   }));
 });
+
+// Display names for programmatic value resolution (avoids q-select map-options issue with use-input)
+const parentCategoryDisplayName = computed(() => {
+  if (!parentCategoryId.value) return ''
+  return categoriesStore.getCategoryById(parentCategoryId.value)?.name || ''
+})
+
+const subcategoryDisplayName = computed(() => {
+  if (!subcategoryId.value) return ''
+  return categoriesStore.getCategoryById(subcategoryId.value)?.name || ''
+})
 
 function onParentCategoryChange() {
   // Reset subcategory when parent changes
