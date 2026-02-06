@@ -26,6 +26,7 @@ export default route(function (/* { store, ssrContext } */) {
     // Public routes that don't require authentication
     const publicRoutes = ['login', 'register', 'forgot-password'];
     const isPublicRoute = publicRoutes.includes(to.name as string);
+    const isSetupRoute = to.name === 'setup';
     
     // If still loading auth state, allow
     if (authStore.loading && !isPublicRoute) {
@@ -33,14 +34,26 @@ export default route(function (/* { store, ssrContext } */) {
       return;
     }
     
-    // Not authenticated → redirect to login
-    if (!authStore.isAuthenticated && !isPublicRoute) {
+    // Not authenticated → redirect to login (unless public or setup)
+    if (!authStore.isAuthenticated && !isPublicRoute && !isSetupRoute) {
       next({ name: 'login', query: { redirect: to.fullPath } });
       return;
     }
     
+    // Authenticated but needs setup (no club) → redirect to setup wizard
+    if (authStore.needsSetup && !isSetupRoute) {
+      next({ name: 'setup' });
+      return;
+    }
+
+    // Already has a club, don't allow going back to setup
+    if (authStore.isAuthenticated && !authStore.needsSetup && isSetupRoute) {
+      next({ name: 'dashboard' });
+      return;
+    }
+    
     // Authenticated trying to access auth pages → dashboard
-    if (authStore.isAuthenticated && isPublicRoute) {
+    if (authStore.isAuthenticated && !authStore.needsSetup && isPublicRoute) {
       next({ name: 'dashboard' });
       return;
     }

@@ -87,7 +87,10 @@ export const useAuthStore = defineStore('auth', () => {
           ...userDoc.data()
         } as User
       } else {
-        const newUser: User = {
+        // User authenticated (e.g. Google SSO) but has no Firestore document yet.
+        // Don't try to write — Firestore rules may block it without a clubId.
+        // Just set in memory; the setup wizard will complete the profile.
+        user.value = {
           uid: fbUser.uid,
           email: fbUser.email || '',
           displayName: fbUser.displayName || fbUser.email?.split('@')[0] || 'User',
@@ -96,14 +99,6 @@ export const useAuthStore = defineStore('auth', () => {
           createdAt: new Date(),
           updatedAt: new Date()
         }
-
-        await setDoc(doc(db, 'users', fbUser.uid), {
-          ...newUser,
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp()
-        })
-
-        user.value = newUser
       }
     } catch (e) {
       logger.error('Error fetching user data:', e)
@@ -242,6 +237,103 @@ export const useAuthStore = defineStore('auth', () => {
     } finally {
       loading.value = false
       _registering.value = false
+    }
+  }
+
+  /** True when user is authenticated but doesn't belong to any club yet */
+  const needsSetup = computed(() => isAuthenticated.value && !user.value?.clubId)
+
+  /**
+   * Complete onboarding for a Google SSO (or any) user without a club.
+   * Creates the club, then writes the user document.
+   */
+  async function completeSetup(clubName: string): Promise<boolean> {
+    if (!firebaseUser.value) return false
+    loading.value = true
+    error.value = null
+
+    try {
+      // 1. Create the club
+      const clubRef = await addDoc(collection(db, 'clubs'), {
+        name: clubName,
+        createdAt: serverTimestamp(),
+        settings: {
+          currency: 'EUR',
+          fiscalYearStart: 1,
+          categories: [],
+          defaultTeams: []
+        }
+      })
+
+      // 2. Write the user document
+      const fbUser = firebaseUser.value
+      const newUser: User = {
+        uid: fbUser.uid,
+        email: fbUser.email || '',
+        displayName: fbUser.displayName || fbUser.email?.split('@')[0] || 'User',
+        role: 'admin',
+        clubId: clubRef.id,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      }
+
+      await setDoc(doc(db, 'users', fbUser.uid), {
+        ...newUser,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      })
+
+      user.value = newUser
+      return true
+    } catch (e) {
+      logger.error('Error completing setup:', e)
+      error.value = 'Error al configurar la cuenta'
+      return false
+    } finally {
+      loading.value = false
+    }
+  }
+
+  /**
+   * Join an existing club via invitation (for Google SSO users in setup wizard).
+   */
+  async function completeSetupWithInvitation(invitation: ClubInvitation): Promise<boolean> {
+    if (!firebaseUser.value) return false
+    loading.value = true
+    error.value = null
+
+    try {
+      const fbUser = firebaseUser.value
+      const newUser: User = {
+        uid: fbUser.uid,
+        email: fbUser.email || '',
+        displayName: fbUser.displayName || fbUser.email?.split('@')[0] || 'User',
+        role: invitation.role,
+        clubId: invitation.clubId,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      }
+
+      await setDoc(doc(db, 'users', fbUser.uid), {
+        ...newUser,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      })
+
+      // Mark invitation as accepted
+      await updateDoc(doc(db, 'invitations', invitation.id), {
+        status: 'accepted',
+        acceptedAt: serverTimestamp()
+      })
+
+      user.value = newUser
+      return true
+    } catch (e) {
+      logger.error('Error joining club:', e)
+      error.value = 'Error al unirse al club'
+      return false
+    } finally {
+      loading.value = false
     }
   }
 
@@ -555,6 +647,7 @@ export const useAuthStore = defineStore('auth', () => {
     canInviteUsers,
     userRole,
     clubId,
+    needsSetup,
 
     // Invitations & Members
     invitations,
@@ -569,6 +662,8 @@ export const useAuthStore = defineStore('auth', () => {
     handleRedirectResult,
     register,
     registerWithInvitation,
+    completeSetup,
+    completeSetupWithInvitation,
     logout,
     resetPassword,
     updateUserProfile,
