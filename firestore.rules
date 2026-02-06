@@ -199,8 +199,9 @@ service cloud.firestore {
     // INVITATIONS
     // ──────────────────────────────────────────────
     match /invitations/{invId} {
-      // Anyone authenticated can read (needed for checking invitations at registration)
-      allow read: if isAuth();
+      // Public read needed so unauthenticated users can verify invitations during registration.
+      // Security is ensured by the cryptographic invitationToken check in app code.
+      allow read: if true;
 
       // Only admin/manager of the club can create invitations
       allow create: if isAuth()

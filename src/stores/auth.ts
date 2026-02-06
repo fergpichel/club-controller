@@ -2,7 +2,8 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import {
   signInWithEmailAndPassword,
-  signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
   GoogleAuthProvider,
   createUserWithEmailAndPassword,
   signOut,
@@ -145,15 +146,12 @@ export const useAuthStore = defineStore('auth', () => {
 
     try {
       const provider = new GoogleAuthProvider()
-      await signInWithPopup(auth, provider)
-      // onAuthStateChanged → setUser() will handle the rest
+      // Use redirect instead of popup to avoid COOP issues on Netlify/modern hosts
+      await signInWithRedirect(auth, provider)
+      // Page will redirect to Google, then back. onAuthStateChanged handles the rest.
       return true
     } catch (e: unknown) {
       const firebaseError = e as { code?: string }
-      if (firebaseError.code === 'auth/popup-closed-by-user') {
-        // User closed the popup, not really an error
-        return false
-      }
       error.value = getAuthErrorMessage(firebaseError.code || '')
       return false
     } finally {
@@ -161,20 +159,67 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
-  async function register(email: string, password: string, displayName: string, clubId: string, role: UserRole = 'employee') {
+  /** Check for redirect result on page load (after Google SSO redirect back) */
+  async function handleRedirectResult() {
+    try {
+      const result = await getRedirectResult(auth)
+      if (result?.user) {
+        // onAuthStateChanged will handle setUser
+        return true
+      }
+    } catch (e: unknown) {
+      const firebaseError = e as { code?: string }
+      logger.error('Google redirect error:', firebaseError.code)
+      error.value = getAuthErrorMessage(firebaseError.code || '')
+    }
+    return false
+  }
+
+  /**
+   * Register a new user.
+   * If `clubId` is provided, joins that club.
+   * If `newClubName` is provided instead, creates the club first (after auth) then joins.
+   */
+  async function register(
+    email: string,
+    password: string,
+    displayName: string,
+    clubId: string,
+    role: UserRole = 'employee',
+    newClubName?: string
+  ) {
     loading.value = true
     error.value = null
     _registering.value = true // Prevent onAuthStateChanged from interfering
 
     try {
+      // 1. Create Firebase Auth user first
       const { user: fbUser } = await createUserWithEmailAndPassword(auth, email, password)
 
+      let finalClubId = clubId
+
+      // 2. If creating a new club, do it now (user is authenticated)
+      if (newClubName && !clubId) {
+        const clubRef = await addDoc(collection(db, 'clubs'), {
+          name: newClubName,
+          createdAt: serverTimestamp(),
+          settings: {
+            currency: 'EUR',
+            fiscalYearStart: 1,
+            categories: [],
+            defaultTeams: []
+          }
+        })
+        finalClubId = clubRef.id
+      }
+
+      // 3. Create user document in Firestore
       const newUser: User = {
         uid: fbUser.uid,
         email,
         displayName,
         role,
-        clubId,
+        clubId: finalClubId,
         createdAt: new Date(),
         updatedAt: new Date()
       }
@@ -521,6 +566,7 @@ export const useAuthStore = defineStore('auth', () => {
     setUnsubscribe,
     login,
     loginWithGoogle,
+    handleRedirectResult,
     register,
     registerWithInvitation,
     logout,

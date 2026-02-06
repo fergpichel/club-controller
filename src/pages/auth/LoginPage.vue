@@ -124,11 +124,9 @@ async function handleLogin() {
   }
 }
 
-async function handleGoogleLogin() {
-  const success = await authStore.loginWithGoogle()
-  if (success) {
-    router.push({ name: 'dashboard' })
-  }
+function handleGoogleLogin() {
+  // Redirects to Google — page will reload and auth boot handles the rest
+  authStore.loginWithGoogle()
 }
 </script>
 

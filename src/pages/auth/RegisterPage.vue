@@ -160,7 +160,7 @@
 import { ref, onMounted } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import { useAuthStore } from 'src/stores/auth';
-import { addDoc, collection, serverTimestamp, doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc } from 'firebase/firestore';
 import { db } from 'src/boot/firebase';
 import type { ClubInvitation, UserRole } from 'src/types';
 import { ROLE_LABELS } from 'src/types';
@@ -224,23 +224,15 @@ async function handleRegister() {
       // Create new club + register as admin (only if registration is open)
       if (!clubName.value) return
 
-      const clubRef = await addDoc(collection(db, 'clubs'), {
-        name: clubName.value,
-        createdAt: serverTimestamp(),
-        settings: {
-          currency: 'EUR',
-          fiscalYearStart: 1,
-          categories: [],
-          defaultTeams: []
-        }
-      });
-
+      // Club will be created AFTER auth user is created (inside register())
+      // This ensures Firestore rules (isAuth()) are satisfied
       success = await authStore.register(
         email.value,
         password.value,
         displayName.value,
-        clubRef.id,
-        'admin'
+        '',        // no existing clubId
+        'admin',
+        clubName.value  // newClubName — triggers club creation post-auth
       );
     }
 
