@@ -266,18 +266,21 @@
               </div>
               <div class="suggestion-category">
                 <q-icon name="arrow_forward" size="16px" color="grey" class="q-mx-sm" />
-                <q-chip
-                  v-if="s.categoryName"
-                  :color="s.confidence > 0.7 ? 'deep-purple-2' : 'amber-2'"
-                  text-color="dark"
-                  size="sm"
-                  icon="auto_awesome"
-                >
-                  {{ s.categoryName }}
-                  <q-badge :color="s.confidence > 0.7 ? 'deep-purple' : 'amber'" floating>
-                    {{ Math.round(s.confidence * 100) }}%
-                  </q-badge>
-                </q-chip>
+                <template v-if="s.categoryName">
+                  <q-chip
+                    :color="s.confidence > 0.7 ? 'deep-purple-2' : 'amber-2'"
+                    text-color="dark"
+                    size="sm"
+                    icon="auto_awesome"
+                  >
+                    {{ s.categoryName }}
+                  </q-chip>
+                  <q-badge
+                    :color="s.confidence > 0.7 ? 'deep-purple' : 'amber'"
+                    :label="`${Math.round(s.confidence * 100)}%`"
+                    class="confidence-badge"
+                  />
+                </template>
                 <span v-else class="text-grey-6">Sin sugerencia</span>
               </div>
               <div class="suggestion-actions">
@@ -840,7 +843,15 @@ onMounted(async () => {
     .suggestion-category {
       display: flex;
       align-items: center;
+      gap: 6px;
       min-width: 180px;
+      flex-shrink: 0;
+
+      .confidence-badge {
+        font-size: 0.625rem;
+        padding: 2px 6px;
+        border-radius: 8px;
+      }
     }
 
     .suggestion-actions {
