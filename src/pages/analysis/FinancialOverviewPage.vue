@@ -89,6 +89,23 @@
             <q-icon name="filter_list" size="18px" />
             <span>Filtros</span>
             <q-badge v-if="activeFilterCount > 0" color="accent" text-color="white" :label="activeFilterCount" class="q-ml-sm" />
+
+            <!-- Active filter badges -->
+            <div v-if="activeFilterBadges.length > 0" class="filter-badges">
+              <span
+                v-for="badge in activeFilterBadges"
+                :key="badge.key"
+                class="filter-badge"
+                :title="badge.label"
+              >
+                <q-icon v-if="badge.icon" :name="badge.icon" size="12px" />
+                <span class="filter-badge-label">{{ badge.label }}</span>
+                <button class="filter-badge-x" @click.stop="removeFilter(badge.key, badge.value)">
+                  <q-icon name="close" size="10px" />
+                </button>
+              </span>
+            </div>
+
             <q-icon :name="showFilters ? 'expand_less' : 'expand_more'" size="18px" class="q-ml-auto" />
           </button>
           <div v-show="showFilters" class="filters-body">
@@ -111,12 +128,19 @@
               >
                 <template #prepend><q-icon name="category" size="18px" /></template>
                 <template #option="scope">
-                  <q-item v-bind="scope.itemProps">
+                  <q-item v-bind="scope.itemProps" :class="{ 'subcategory-option': scope.opt.isChild }">
                     <q-item-section avatar>
                       <q-icon :name="scope.opt.icon || 'circle'" :style="{ color: scope.opt.color }" size="20px" />
                     </q-item-section>
                     <q-item-section>
                       <q-item-label>{{ scope.opt.label }}</q-item-label>
+                    </q-item-section>
+                    <q-item-section side>
+                      <q-icon
+                        :name="scope.opt.catType === 'income' ? 'trending_up' : 'trending_down'"
+                        :color="scope.opt.catType === 'income' ? 'positive' : 'negative'"
+                        size="14px"
+                      />
                     </q-item-section>
                   </q-item>
                 </template>
@@ -537,19 +561,19 @@ const comparisonOptions = computed(() => {
 const allCategoryOptions = computed(() => {
   const tree = categoriesStore.getCategoriesTree('income')
   const treeExpense = categoriesStore.getCategoriesTree('expense')
-  const opts: { label: string; value: string; icon?: string; color?: string; isParent?: boolean }[] = []
+  const opts: { label: string; value: string; icon?: string; color?: string; isChild?: boolean; catType?: string }[] = []
 
-  const addTree = (items: typeof tree, prefix: string) => {
+  const addTree = (items: typeof tree, type: 'income' | 'expense') => {
     items.forEach(parent => {
-      opts.push({ label: `${prefix} ${parent.name}`, value: parent.id, icon: parent.icon, color: parent.color, isParent: true })
+      opts.push({ label: parent.name, value: parent.id, icon: parent.icon, color: parent.color, catType: type })
       parent.subcategories.forEach(sub => {
-        opts.push({ label: `  ↳ ${sub.name}`, value: sub.id, icon: sub.icon, color: sub.color || parent.color })
+        opts.push({ label: sub.name, value: sub.id, icon: sub.icon, color: sub.color || parent.color, isChild: true, catType: type })
       })
     })
   }
 
-  addTree(tree, '📈')
-  addTree(treeExpense, '📉')
+  addTree(tree, 'income')
+  addTree(treeExpense, 'expense')
   return opts
 })
 
@@ -590,14 +614,46 @@ const ageCategoryFilter = useSelectFilter(allAgeCategoryOptions)
 const teamFilter = useSelectFilter(allTeamOptions)
 
 const activeFilterCount = computed(() => {
-  let count = 0
-  if (filters.categoryIds.length) count++
-  if (filters.projectIds.length) count++
-  if (filters.eventIds.length) count++
-  if (filters.ageCategoryIds.length) count++
-  if (filters.teamIds.length) count++
-  return count
+  return filters.categoryIds.length
+    + filters.projectIds.length
+    + filters.eventIds.length
+    + filters.ageCategoryIds.length
+    + filters.teamIds.length
 })
+
+interface FilterBadge { key: string; value: string; label: string; icon?: string }
+
+const activeFilterBadges = computed(() => {
+  const badges: FilterBadge[] = []
+
+  for (const id of filters.categoryIds) {
+    const cat = allCategoryOptions.value.find(o => o.value === id)
+    badges.push({ key: 'categoryIds', value: id, label: cat?.label || id, icon: cat?.icon })
+  }
+  for (const id of filters.projectIds) {
+    const proj = allProjectOptions.value.find(o => o.value === id)
+    badges.push({ key: 'projectIds', value: id, label: proj?.label || id, icon: 'folder' })
+  }
+  for (const id of filters.eventIds) {
+    const ev = allEventOptions.value.find(o => o.value === id)
+    badges.push({ key: 'eventIds', value: id, label: ev?.label || id, icon: 'event' })
+  }
+  for (const id of filters.ageCategoryIds) {
+    const ac = allAgeCategoryOptions.value.find(o => o.value === id)
+    badges.push({ key: 'ageCategoryIds', value: id, label: ac?.label || id, icon: 'groups' })
+  }
+  for (const id of filters.teamIds) {
+    const t = allTeamOptions.value.find(o => o.value === id)
+    badges.push({ key: 'teamIds', value: id, label: t?.label || id, icon: 'shield' })
+  }
+  return badges
+})
+
+function removeFilter(key: string, value: string) {
+  const arr = filters[key as keyof typeof filters] as string[]
+  const idx = arr.indexOf(value)
+  if (idx !== -1) arr.splice(idx, 1)
+}
 
 // ─── DATA ──────────────────────────────────────────────
 // Season months: July → June
@@ -1479,8 +1535,67 @@ onMounted(async () => {
   color: var(--color-text-secondary);
   cursor: pointer;
   transition: color var(--duration-fast);
+  flex-wrap: wrap;
 
   &:hover { color: var(--color-text-primary); }
+}
+
+// Active filter badges inline
+.filter-badges {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-left: var(--space-2);
+}
+
+.filter-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px 2px 8px;
+  border-radius: var(--radius-full);
+  background: var(--color-bg-tertiary);
+  border: 1px solid var(--color-border-light);
+  font-size: 0.7rem;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+  max-width: 140px;
+  white-space: nowrap;
+}
+
+.filter-badge-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 90px;
+}
+
+.filter-badge-x {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: none;
+  background: transparent;
+  color: var(--color-text-tertiary);
+  cursor: pointer;
+  padding: 0;
+  flex-shrink: 0;
+  transition: all var(--duration-fast);
+
+  &:hover {
+    background: var(--color-danger);
+    color: white;
+  }
+}
+
+// Subcategory indent in dropdown
+.subcategory-option {
+  padding-left: 32px !important;
+  font-size: 0.85em;
+  opacity: 0.9;
 }
 
 .filters-body {
