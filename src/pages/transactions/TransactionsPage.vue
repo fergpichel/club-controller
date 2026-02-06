@@ -505,32 +505,16 @@ function buildFilters(): TransactionFilters {
   return filters;
 }
 
-// Transactions: additional client-side filtering for uncategorized only
-const filteredTransactions = computed(() => {
-  let transactions = transactionsStore.transactions;
+// Now that uncategorized is server-side, filteredTransactions = store transactions
+const filteredTransactions = computed(() => transactionsStore.transactions);
 
-  // Client-side: Uncategorized filter (complex OR query not supported in Firestore)
-  if (activeTab.value === 'uncategorized') {
-    const uncatIds = categoriesStore.uncategorizedIds;
-    transactions = transactions.filter(t =>
-      !t.categoryId || uncatIds.has(t.categoryId)
-    );
-  }
-
-  return transactions;
-});
-
-// Counts from currently loaded data
+// Counts
 const pendingCount = computed(() => {
   return transactionsStore.transactions.filter(t => t.status === 'pending').length;
 });
 
-const uncategorizedCount = computed(() => {
-  const uncatIds = categoriesStore.uncategorizedIds;
-  return transactionsStore.transactions.filter(t =>
-    !t.categoryId || uncatIds.has(t.categoryId)
-  ).length;
-});
+// Server-side count (lightweight aggregation, no docs downloaded)
+const uncategorizedCount = computed(() => transactionsStore.uncategorizedServerCount);
 
 // Fetch transactions with current filters
 async function fetchWithFilters() {
@@ -767,6 +751,7 @@ async function applyAcceptedSuggestions() {
 
     showAISuggestions.value = false
     fetchWithFilters()
+    transactionsStore.fetchUncategorizedCount() // Refresh count
   } catch (e) {
     console.error('[AI] Apply suggestions error:', e)
     $q.notify({ type: 'negative', message: 'Error al aplicar sugerencias' })
@@ -782,7 +767,11 @@ onMounted(async () => {
     categoriesStore.fetchCategories(),
     teamsStore.fetchTeams()
   ]);
-  fetchWithFilters();
+  // Fetch transactions + uncategorized count in parallel
+  await Promise.all([
+    fetchWithFilters(),
+    transactionsStore.fetchUncategorizedCount()
+  ]);
 });
 </script>
 

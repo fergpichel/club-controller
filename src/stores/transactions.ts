@@ -6,6 +6,7 @@ import {
   where,
   orderBy,
   getDocs,
+  getCountFromServer,
   addDoc,
   updateDoc,
   deleteDoc,
@@ -168,9 +169,14 @@ export const useTransactionsStore = defineStore('transactions', () => {
         }
       }
 
-      // Note: uncategorized filter is handled client-side because Firestore
-      // doesn't support OR queries like (categoryId == null OR categoryId == 'uncategorized')
-      // We fetch all and filter in the component
+      // Uncategorized filter: use Firestore 'in' query with all known uncategorized IDs
+      if (filters.uncategorized) {
+        const categoriesStore = useCategoriesStore()
+        const uncatIds = Array.from(categoriesStore.uncategorizedIds)
+        if (uncatIds.length > 0) {
+          constraints.push(where('categoryId', 'in', uncatIds))
+        }
+      }
 
       // Pagination
       if (lastDoc.value) {
@@ -206,6 +212,34 @@ export const useTransactionsStore = defineStore('transactions', () => {
       error.value = 'Error al cargar transacciones'
     } finally {
       loading.value = false
+    }
+  }
+
+  /**
+   * Lightweight count of uncategorized transactions (server-side aggregation).
+   * Uses getCountFromServer() — no documents are downloaded.
+   */
+  const uncategorizedServerCount = ref(0)
+
+  async function fetchUncategorizedCount() {
+    try {
+      const authStore = useAuthStore()
+      if (!authStore.clubId) return
+
+      const categoriesStore = useCategoriesStore()
+      const uncatIds = Array.from(categoriesStore.uncategorizedIds)
+      if (uncatIds.length === 0) return
+
+      const q = query(
+        collection(db, 'transactions'),
+        where('clubId', '==', authStore.clubId),
+        where('categoryId', 'in', uncatIds)
+      )
+
+      const snapshot = await getCountFromServer(q)
+      uncategorizedServerCount.value = snapshot.data().count
+    } catch (e) {
+      logger.error('Error fetching uncategorized count:', e)
     }
   }
 
@@ -746,6 +780,7 @@ export const useTransactionsStore = defineStore('transactions', () => {
     expenseTransactions,
     pendingTransactions,
     uncategorizedTransactions,
+    uncategorizedServerCount,
     totalIncome,
     totalExpenses,
     balance,
@@ -754,6 +789,7 @@ export const useTransactionsStore = defineStore('transactions', () => {
 
     // Actions
     fetchTransactions,
+    fetchUncategorizedCount,
     fetchMonthTransactions,
     fetchAllInDateRange,
     loadMore,
