@@ -820,15 +820,28 @@ function getRealIndex(filteredIdx: number): number {
 }
 
 function getCategoryOptions(type: 'income' | 'expense') {
-  const categories = type === 'income'
-    ? categoriesStore.incomeCategories
-    : categoriesStore.expenseCategories
-  return categories.map(c => ({
-    label: c.parentId ? `  ↳ ${c.name}` : c.name,
-    value: c.id,
-    icon: c.icon,
-    color: c.color
-  }))
+  // Build a hierarchical list: parent → children, parent → children…
+  const tree = categoriesStore.getCategoriesTree(type)
+  const options: { label: string; value: string; icon: string; color: string }[] = []
+
+  for (const parent of tree) {
+    options.push({
+      label: parent.name,
+      value: parent.id,
+      icon: parent.icon,
+      color: parent.color
+    })
+    for (const sub of parent.subcategories) {
+      options.push({
+        label: `  ↳ ${sub.name}`,
+        value: sub.id,
+        icon: sub.icon,
+        color: sub.color
+      })
+    }
+  }
+
+  return options
 }
 
 function openCreateCategory(group: ConceptoGroup) {

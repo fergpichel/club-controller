@@ -42,6 +42,7 @@ export const useCategoriesStore = defineStore('categories', () => {
   const categories = ref<Category[]>([])
   const loading = ref(false)
   const error = ref<string | null>(null)
+  let _fetchPromise: Promise<void> | null = null // concurrency guard
 
   // Getters - Basic
   const incomeCategories = computed(() =>
@@ -77,6 +78,20 @@ export const useCategoriesStore = defineStore('categories', () => {
 
   // Actions
   async function fetchCategories() {
+    // Prevent concurrent calls — if one fetch is already in-flight, reuse it.
+    // This avoids the race where two callers both see 0 categories and
+    // both trigger seedDefaultCategories, creating duplicates in Firestore.
+    if (_fetchPromise) return _fetchPromise
+
+    _fetchPromise = _doFetchCategories()
+    try {
+      await _fetchPromise
+    } finally {
+      _fetchPromise = null
+    }
+  }
+
+  async function _doFetchCategories() {
     loading.value = true
     error.value = null
 
@@ -90,10 +105,19 @@ export const useCategoriesStore = defineStore('categories', () => {
       )
 
       const snapshot = await getDocs(q)
-      categories.value = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
+      const raw = snapshot.docs.map(d => ({
+        id: d.id,
+        ...d.data()
       })) as Category[]
+
+      // Deduplicate by name + type + parentId (guard against past double-seeding)
+      const seen = new Set<string>()
+      categories.value = raw.filter(c => {
+        const key = `${c.name}|${c.type}|${c.parentId || ''}`
+        if (seen.has(key)) return false
+        seen.add(key)
+        return true
+      })
 
       // If no categories exist, create defaults
       if (categories.value.length === 0) {
