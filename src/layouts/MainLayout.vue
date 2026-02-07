@@ -470,7 +470,7 @@ const accountantNavItems = [
 ]
 
 const superAdminNavItems = [
-  { name: 'superadmin', icon: 'admin_panel_settings', label: 'Backoffice', to: { name: 'superadmin-dashboard' } }
+  { name: 'admin', icon: 'admin_panel_settings', label: 'Backoffice', to: { name: 'admin-dashboard' } }
 ]
 
 const mobileNavItems = computed(() => {

@@ -255,13 +255,13 @@ const routes: RouteRecordRaw[] = [
 
   // Superadmin backoffice (separate layout)
   {
-    path: '/superadmin',
+    path: '/admin',
     component: () => import('src/layouts/SuperAdminLayout.vue'),
     meta: { requiresAuth: true, requiresSuperAdmin: true },
     children: [
       {
         path: '',
-        name: 'superadmin-dashboard',
+        name: 'admin-dashboard',
         component: () => import('src/pages/superadmin/SuperAdminDashboard.vue')
       },
       {

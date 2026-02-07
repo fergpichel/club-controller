@@ -13,7 +13,7 @@
           @click="drawer = !drawer"
         />
 
-        <router-link :to="{ name: 'superadmin-dashboard' }" class="sa-brand">
+        <router-link :to="{ name: 'admin-dashboard' }" class="sa-brand">
           <div class="sa-brand-logo">
             <q-icon name="admin_panel_settings" size="20px" />
           </div>
@@ -150,7 +150,7 @@ const miniState = ref(false)
 const scrolled = ref(false)
 
 const navItems = [
-  { name: 'superadmin-dashboard', icon: 'dashboard', label: 'Dashboard', to: { name: 'superadmin-dashboard' } },
+  { name: 'admin-dashboard', icon: 'dashboard', label: 'Dashboard', to: { name: 'admin-dashboard' } },
   { name: 'ai-usage', icon: 'smart_toy', label: 'Uso de IA', to: { name: 'ai-usage' } }
 ]
 

@@ -50,9 +50,9 @@ Aplicacion web PWA para la gestion financiera de clubes deportivos, desarrollada
 | **Viewer** (Observador) | Solo lectura |
 
 ### Backoffice Super Admin
-Panel independiente (`/superadmin`) con layout propio para administradores de la plataforma:
-- **Dashboard** — Clubs registrados, usuarios, actividad de IA
-- **Uso de IA** — Logs detallados de todas las llamadas a Gemini (usuario, club, funcion, duracion, estado)
+Panel independiente (`/admin`) con layout propio para administradores de la plataforma:
+- **Dashboard** (`/admin`) — Clubs registrados, usuarios, actividad de IA
+- **Uso de IA** (`/admin/ai-usage`) — Logs detallados de todas las llamadas a Gemini
 - **Cache server-side** — Las estadisticas se cachean 5 minutos para no impactar rendimiento
 
 Acceso restringido a usuarios con `isSuperAdmin: true` en Firestore.
@@ -222,7 +222,7 @@ Principales protecciones:
 
 ### Super Admin
 
-Para marcar un usuario como superadmin, anade `isSuperAdmin: true` a su documento en `/users/{uid}` desde Firebase Console. Esto le da acceso al backoffice en `/superadmin`.
+Para marcar un usuario como superadmin, anade `isSuperAdmin: true` a su documento en `/users/{uid}` desde Firebase Console. Esto le da acceso al backoffice en `/admin`.
 
 ## Cloud Functions
 
