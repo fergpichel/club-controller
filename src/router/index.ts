@@ -87,6 +87,12 @@ export default route(function (/* { store, ssrContext } */) {
       return;
     }
 
+    // Superadmin backoffice
+    if (to.meta.requiresSuperAdmin && !authStore.isSuperAdmin) {
+      next({ name: 'dashboard' });
+      return;
+    }
+
     // Employee can only access: dashboard (their own), transactions, new-transaction, transaction-detail, edit-transaction, settings (profile)
     if (authStore.isEmployee) {
       const employeeAllowed = [

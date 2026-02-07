@@ -1,0 +1,91 @@
+---
+description: Security rules for API keys and secrets — never expose sensitive keys in client-side code
+alwaysApply: true
+---
+
+# Security: API Keys & Secrets
+
+## NEVER expose secret API keys in client-side code
+
+### Rules
+
+1. **NEVER use `VITE_` prefix for secret API keys** (e.g., AI service keys, payment keys, third-party API secrets).
+   - Variables prefixed with `VITE_` are embedded in the JavaScript bundle and visible to anyone in DevTools.
+   - Firebase config keys (`VITE_FIREBASE_*`) are an exception — they are designed to be public and restricted by Firebase Security Rules + domain restrictions.
+
+2. **Use Firebase Cloud Functions for sensitive operations**.
+   - AI service calls (Gemini, OpenAI, etc.) MUST go through Cloud Functions.
+   - Payment processing MUST go through Cloud Functions.
+   - Any call requiring a secret API key MUST go through Cloud Functions.
+
+3. **Store secrets using Firebase Secrets Manager**.
+   - Use `defineSecret()` from `firebase-functions/params` in Cloud Functions.
+   - Set secrets via `firebase functions:secrets:set SECRET_NAME`.
+   - NEVER hardcode secrets in function source code or commit them to git.
+
+4. **Always validate authentication in Cloud Functions**.
+   - Check `request.auth` in every `onCall` function.
+   - Log usage per user/club to `ai_usage_logs` collection for auditing.
+
+### Architecture Pattern
+
+```
+Client (Vue/Quasar)
+    │
+    ▼
+httpsCallable(functions, 'functionName')
+    │
+    ▼
+Cloud Function (validates auth, logs usage)
+    │
+    ├──▶ Secret Manager → API key (GEMINI_API_KEY, etc.)
+    │
+    ├──▶ External API (Gemini, Stripe, etc.)
+    │
+    └──▶ Firestore → ai_usage_logs (audit trail)
+```
+
+### BAD — secret key exposed to client
+
+```typescript
+// In frontend code — NEVER DO THIS
+const apiKey = import.meta.env.VITE_GEMINI_API_KEY  // EXPOSED IN JS BUNDLE!
+const genAI = new GoogleGenerativeAI(apiKey)
+const result = await model.generateContent(prompt)
+```
+
+### GOOD — key stays on server
+
+```typescript
+// In frontend code
+import { httpsCallable } from 'firebase/functions'
+import { functions } from 'src/boot/firebase'
+
+const fn = httpsCallable(functions, 'suggestCategory')
+const result = await fn({ description, type, categories })
+```
+
+```typescript
+// In Cloud Function (functions/src/index.ts)
+import { onCall, HttpsError } from 'firebase-functions/v2/https'
+import { defineSecret } from 'firebase-functions/params'
+
+const geminiKey = defineSecret('GEMINI_API_KEY')  // Stored in Secret Manager
+
+export const suggestCategory = onCall(
+  { secrets: [geminiKey], region: 'europe-west1' },
+  async (request) => {
+    if (!request.auth) throw new HttpsError('unauthenticated', '...')
+    // Use geminiKey.value() — only accessible server-side
+  }
+)
+```
+
+### Checklist before adding a new external service
+
+- [ ] API key stored in Firebase Secrets Manager (NOT in `.env` or source code)
+- [ ] Cloud Function created with `secrets: [...]` parameter
+- [ ] Authentication validated via `request.auth`
+- [ ] Usage logged to `ai_usage_logs` or equivalent collection
+- [ ] Frontend calls via `httpsCallable` only
+- [ ] No `VITE_` env var created for the secret key

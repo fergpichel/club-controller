@@ -286,6 +286,25 @@ service cloud.firestore {
     }
 
     // ──────────────────────────────────────────────
+    // BACKOFFICE CACHE (superadmin only)
+    // ──────────────────────────────────────────────
+    match /backoffice_cache/{docId} {
+      allow read: if isAuth() && userDoc().isSuperAdmin == true;
+      allow write: if false; // Only Cloud Functions (admin SDK) can write
+    }
+
+    // ──────────────────────────────────────────────
+    // AI USAGE LOGS (superadmin backoffice only)
+    // ──────────────────────────────────────────────
+    match /ai_usage_logs/{logId} {
+      // Only superadmins can read usage logs (for the backoffice)
+      allow read: if isAuth() && userDoc().isSuperAdmin == true;
+
+      // Client writes are blocked — only Cloud Functions (admin SDK) can write
+      allow write: if false;
+    }
+
+    // ──────────────────────────────────────────────
     // DENY ALL OTHER COLLECTIONS
     // ──────────────────────────────────────────────
     match /{document=**} {

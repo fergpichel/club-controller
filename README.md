@@ -1,190 +1,267 @@
-# Grootter Finance 🏆
+# Grootter Finance
 
-Aplicación web PWA para la gestión financiera de clubes deportivos, desarrollada con Vue 3, Quasar Framework y Firebase.
+Aplicacion web PWA para la gestion financiera de clubes deportivos, desarrollada con Vue 3, Quasar Framework y Firebase.
 
-## Características principales
+## Caracteristicas principales
 
-### 📱 Mobile-first
-- **Registro rápido de gastos e ingresos** - Interfaz optimizada para móvil
-- **Categorización inteligente** - Asigna transacciones a categorías, equipos, proyectos y eventos
-- **Adjuntos y facturas** - Sube fotos de tickets y documentos
-- **PWA** - Instálala como app nativa en tu dispositivo
+### Mobile-first
+- **Registro rapido de gastos e ingresos** — Interfaz optimizada para movil
+- **Categorizacion inteligente con IA** — Gemini sugiere categorias automaticamente
+- **Adjuntos y facturas** — Sube fotos de tickets y documentos
+- **PWA** — Instalable como app nativa
 
-### 💼 Gestión completa
-- **Equipos** - Organiza finanzas por equipo deportivo
-- **Proyectos** - Seguimiento de presupuestos por proyecto
-- **Eventos** - Control financiero de eventos puntuales
-- **Categorías personalizables** - Adapta las categorías a tu club
+### Gestion completa
+- **Equipos** — Organiza finanzas por equipo deportivo
+- **Proyectos** — Seguimiento de presupuestos por proyecto
+- **Eventos** — Control financiero de eventos puntuales
+- **Proveedores y patrocinadores** — Vinculacion con transacciones
+- **Categorias personalizables** — Adapta las categorias a tu club (con subcategorias y categorias sensibles)
 
-### 📊 Estadísticas y reporting
-- **Dashboard interactivo** - Visión general de la situación financiera
-- **Gráficos de tendencias** - Evolución mensual de ingresos y gastos
-- **Comparativas** - Por categoría, equipo, proyecto
-- **Previsiones** - Basadas en datos históricos
+### Inteligencia artificial
+- **Categorizacion batch** — Categoriza multiples transacciones al importar Excel
+- **Categorizacion individual** — Sugerencias en tiempo real al crear transacciones
+- **Sugerencias de presupuesto** — Propuestas basadas en datos historicos
+- **Aprendizaje por correcciones** — Las correcciones del usuario mejoran futuras sugerencias
 
-### 🔒 Gestión contable
-- **Cierre de mes** - Bloquea transacciones para auditoría
-- **Vista gestoría** - Acceso específico para contables externos
-- **Exportación** - PDF, Excel, CSV
-- **Historial completo** - Trazabilidad de todas las operaciones
+> Las llamadas a Gemini se realizan desde **Firebase Cloud Functions** (server-side). La API key nunca se expone al cliente. Ver [Seguridad](#seguridad).
 
-### 👥 Roles y permisos
-- **Admin** - Control total del club
-- **Manager** - Gestión financiera y aprobaciones
-- **Member** - Registro de transacciones
-- **Accountant** - Vista de consulta para gestoría
+### Estadisticas y reporting
+- **Dashboard interactivo** — Vision general de la situacion financiera
+- **Cuadro de mando** — KPIs financieros y alertas
+- **Tesoreria** — Analisis avanzado de flujo de caja
+- **Rentabilidad por equipo** — Costes, cuotas e ingresos por equipo
+- **Previsiones** — Basadas en datos historicos
+- **Exportacion** — PDF, Excel, CSV
 
-## Tecnologías
+### Gestion contable
+- **Cierre de mes** — Bloquea transacciones para auditoria
+- **Vista gestoria** — Acceso especifico para contables externos
+- **Presupuestos por temporada** — Con sugerencias de IA
+- **Historial completo** — Trazabilidad de todas las operaciones
 
-- **Vue 3** + Composition API
-- **Quasar Framework 2** - UI components y PWA
-- **Firebase** - Auth, Firestore, Storage
-- **Pinia** - State management
-- **Chart.js** - Visualizaciones
-- **TypeScript** - Type safety
+### Roles y permisos
+| Rol | Descripcion |
+|-----|-------------|
+| **Admin** | Control total del club |
+| **Manager** (Directivo) | Gestion financiera, settings, aprobaciones |
+| **Controller** (Interventor) | Acceso completo + cierres de mes |
+| **Editor** (Coordinador) | CRUD transacciones, datos sensibles anonimizados |
+| **Employee** (Colaborador) | Solo crea transacciones y ve las suyas |
+| **Viewer** (Observador) | Solo lectura |
 
-## Instalación
+### Backoffice Super Admin
+Panel independiente (`/superadmin`) con layout propio para administradores de la plataforma:
+- **Dashboard** — Clubs registrados, usuarios, actividad de IA
+- **Uso de IA** — Logs detallados de todas las llamadas a Gemini (usuario, club, funcion, duracion, estado)
+- **Cache server-side** — Las estadisticas se cachean 5 minutos para no impactar rendimiento
 
-### Requisitos previos
-- Node.js 18+ 
-- npm o yarn
-- Cuenta de Firebase
+Acceso restringido a usuarios con `isSuperAdmin: true` en Firestore.
 
-### 1. Clonar el repositorio
-```bash
-git clone https://github.com/tu-usuario/club-controller.git
-cd club-controller
-```
+## Tecnologias
 
-### 2. Instalar dependencias
-```bash
-npm install
-```
-
-### 3. Configurar Firebase
-1. Crea un proyecto en [Firebase Console](https://console.firebase.google.com)
-2. Habilita Authentication (Email/Password)
-3. Crea una base de datos Firestore
-4. Habilita Storage
-5. Copia la configuración a `.env`:
-
-```bash
-cp .env.example .env
-# Edita .env con tus credenciales de Firebase
-```
-
-### 4. Ejecutar en desarrollo
-```bash
-npm run dev
-```
-
-### 5. Build para producción
-```bash
-npm run build
-```
+- **Vue 3** + Composition API + TypeScript
+- **Quasar Framework 2** — UI components, PWA, responsive
+- **Firebase** — Auth, Firestore, Storage, Cloud Functions, Hosting
+- **Pinia** — State management
+- **Chart.js** — Visualizaciones
+- **Google Gemini** — IA para categorizacion y presupuestos (server-side via Cloud Functions)
 
 ## Estructura del proyecto
 
 ```
-src/
-├── boot/           # Inicialización (Firebase, Auth)
-├── components/     # Componentes reutilizables
-├── css/            # Estilos globales SCSS
-├── layouts/        # Layouts de la aplicación
-├── pages/          # Páginas/vistas
-│   ├── auth/       # Login, registro
-│   ├── transactions/ # Gestión de transacciones
-│   ├── statistics/ # Estadísticas
-│   ├── closings/   # Cierres de mes
-│   ├── accountant/ # Vista gestoría
-│   ├── teams/      # Equipos
-│   ├── projects/   # Proyectos
-│   ├── events/     # Eventos
-│   └── settings/   # Configuración
-├── router/         # Configuración de rutas
-├── stores/         # Pinia stores
-└── types/          # TypeScript types
+club-controller/
+├── src/                    # Frontend (Vue/Quasar)
+│   ├── boot/               # Inicializacion (Firebase, Auth)
+│   ├── components/         # Componentes reutilizables
+│   ├── composables/        # Composables (useSessionTimeout, etc.)
+│   ├── css/                # Estilos globales SCSS
+│   ├── layouts/            # Layouts
+│   │   ├── MainLayout.vue      # Layout principal de la app
+│   │   ├── AuthLayout.vue      # Layout de login/registro
+│   │   └── SuperAdminLayout.vue # Layout del backoffice
+│   ├── pages/              # Paginas/vistas
+│   │   ├── auth/               # Login, registro, setup
+│   │   ├── transactions/       # Gestion de transacciones
+│   │   ├── statistics/         # Estadisticas
+│   │   ├── analysis/           # Cuadro de mando, rentabilidad
+│   │   ├── treasury/           # Tesoreria
+│   │   ├── closings/           # Cierres de mes
+│   │   ├── accountant/         # Vista gestoria
+│   │   ├── forecasts/          # Previsiones
+│   │   ├── teams/              # Equipos
+│   │   ├── projects/           # Proyectos
+│   │   ├── events/             # Eventos
+│   │   ├── settings/           # Configuracion, presupuesto, importacion
+│   │   └── superadmin/         # Backoffice (dashboard, uso de IA)
+│   ├── router/             # Rutas y navigation guards
+│   ├── services/           # Servicios (aiCategorization, etc.)
+│   ├── stores/             # Pinia stores
+│   ├── types/              # TypeScript types
+│   └── utils/              # Utilidades (formatters, logger)
+├── functions/              # Firebase Cloud Functions (server-side)
+│   ├── src/
+│   │   └── index.ts            # Funciones: AI categorization + backoffice stats
+│   ├── package.json
+│   └── tsconfig.json
+├── firebase.json           # Configuracion Firebase (hosting, functions, emulators)
+├── firestore.rules         # Reglas de seguridad Firestore
+├── storage.rules           # Reglas de seguridad Storage
+└── .cursor/rules/          # Reglas de Cursor AI (security, etc.)
 ```
 
-## Reglas de Firestore
+## Instalacion
 
-Crea las siguientes reglas en Firebase Console:
+### Requisitos previos
+- Node.js 20+
+- npm o yarn
+- Firebase CLI (`npm install -g firebase-tools`)
+- Cuenta de Firebase con proyecto creado
 
-```javascript
-rules_version = '2';
-service cloud.firestore {
-  match /databases/{database}/documents {
-    // Users
-    match /users/{userId} {
-      allow read: if request.auth != null;
-      allow write: if request.auth.uid == userId;
-    }
-    
-    // Clubs
-    match /clubs/{clubId} {
-      allow read: if request.auth != null;
-      allow write: if get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
-    }
-    
-    // Transactions
-    match /transactions/{transactionId} {
-      allow read: if request.auth != null;
-      allow create: if request.auth != null;
-      allow update, delete: if request.auth != null && 
-        resource.data.monthClosed != true;
-    }
-    
-    // Categories, Teams, Projects, Events
-    match /{collection}/{docId} {
-      allow read: if request.auth != null;
-      allow write: if request.auth != null;
-    }
-  }
-}
+### 1. Clonar e instalar
+
+```bash
+git clone <repo-url>
+cd club-controller
+
+# Frontend
+npm install
+
+# Cloud Functions
+cd functions && npm install && cd ..
 ```
+
+### 2. Configurar Firebase
+
+1. Crea un proyecto en [Firebase Console](https://console.firebase.google.com)
+2. Habilita **Authentication** (Email/Password + Google)
+3. Crea una base de datos **Firestore**
+4. Habilita **Storage**
+5. Copia la configuracion:
+
+```bash
+cp .env.example .env.development
+# Edita con tus credenciales de Firebase
+```
+
+### 3. Configurar el secreto de Gemini
+
+La API key de Gemini se almacena en Firebase Secrets Manager (nunca en el cliente):
+
+```bash
+firebase functions:secrets:set GEMINI_API_KEY
+# Pega tu API key de Google AI Studio
+```
+
+### 4. Desarrollo local
+
+**Con emuladores** (recomendado para desarrollo):
+```bash
+# Terminal 1: Emuladores Firebase
+npm run emulators
+
+# Terminal 2: Dev server
+npm run dev
+```
+
+**Contra produccion** (para testing):
+```bash
+# Crea .env.development.local con VITE_USE_EMULATORS=false
+npm run dev
+```
+
+### 5. Despliegue
+
+```bash
+# Build frontend + deploy todo
+npm run build
+firebase deploy
+
+# Solo funciones
+cd functions && npm run build && cd ..
+firebase deploy --only functions
+
+# Solo reglas de Firestore
+firebase deploy --only firestore:rules
+```
+
+## Seguridad
+
+### API keys y secretos
+
+**Regla fundamental**: las API keys de servicios externos (Gemini, Stripe, etc.) **nunca** se exponen al cliente.
+
+```
+Cliente (Vue) → httpsCallable() → Cloud Function → Gemini API
+                                        ↓
+                                  Secrets Manager (API key)
+                                        ↓
+                                  Firestore (usage logs)
+```
+
+- Las variables `VITE_*` se incrustan en el bundle JS y son publicas. Solo usar para Firebase config (que es publica por diseno).
+- Los secretos van en Firebase Secrets Manager: `firebase functions:secrets:set SECRET_NAME`
+- Cada Cloud Function valida `request.auth` antes de procesar.
+- Los logs de uso se registran en `ai_usage_logs` para auditoria.
+
+Ver `.cursor/rules/security-api-keys.mdc` para la guia completa.
+
+### Firestore Security Rules
+
+Las reglas de seguridad estan en `firestore.rules` (no en Firebase Console). Despliega con:
+
+```bash
+firebase deploy --only firestore:rules
+```
+
+Principales protecciones:
+- Usuarios solo leen miembros de su propio club
+- Transacciones protegidas por pertenencia al club + permisos de rol
+- Cierres de mes solo por admin/controller
+- `ai_usage_logs` y `backoffice_cache`: solo lectura para superadmins, escritura exclusiva desde Cloud Functions (admin SDK)
+- Catch-all que deniega todo lo no especificado
+
+### Super Admin
+
+Para marcar un usuario como superadmin, anade `isSuperAdmin: true` a su documento en `/users/{uid}` desde Firebase Console. Esto le da acceso al backoffice en `/superadmin`.
+
+## Cloud Functions
+
+Funciones desplegadas en `europe-west1`:
+
+| Funcion | Descripcion | Uso |
+|---------|-------------|-----|
+| `suggestCategoriesBatch` | Categoriza multiples conceptos con Gemini | Importacion Excel |
+| `suggestCategory` | Categoriza una transaccion individual | Formulario de transaccion |
+| `suggestBudgetAllocations` | Sugiere presupuesto basado en historico | Pagina de presupuesto |
+| `getBackofficeStats` | Agrega estadisticas de la plataforma | Dashboard superadmin |
+
+Todas las funciones:
+- Validan autenticacion (`request.auth`)
+- Las funciones de IA registran uso en `ai_usage_logs`
+- `getBackofficeStats` verifica `isSuperAdmin` server-side y cachea resultados 5 min
+
+## Emuladores
+
+```bash
+npm run emulators
+```
+
+Puertos:
+| Servicio | Puerto |
+|----------|--------|
+| Auth | 9099 |
+| Firestore | 8080 |
+| Storage | 9199 |
+| Functions | 5001 |
+| Emulator UI | 4000 |
 
 ## PWA
 
-La aplicación está configurada como Progressive Web App:
-
-- **Instalable** en dispositivos móviles y desktop
-- **Funciona offline** (caché de recursos estáticos)
-- **Actualizaciones automáticas**
-
-Para generar los iconos de la PWA, coloca un icono de 512x512 en `public/icons/` y ejecuta:
-
-```bash
-npx pwa-asset-generator logo.png public/icons
-```
-
-## Despliegue
-
-### Firebase Hosting
-```bash
-npm install -g firebase-tools
-firebase login
-firebase init hosting
-npm run build
-firebase deploy
-```
-
-### Netlify / Vercel
-Conecta tu repositorio y configura:
-- Build command: `npm run build`
-- Output directory: `dist/spa`
-
-## Contribuir
-
-1. Fork del repositorio
-2. Crea tu rama: `git checkout -b feature/nueva-funcionalidad`
-3. Commit: `git commit -am 'Añade nueva funcionalidad'`
-4. Push: `git push origin feature/nueva-funcionalidad`
-5. Crea un Pull Request
+La aplicacion esta configurada como Progressive Web App:
+- Instalable en dispositivos moviles y desktop
+- Cache de recursos estaticos
+- Actualizaciones automaticas
 
 ## Licencia
 
-MIT License - ver [LICENSE](LICENSE) para más detalles.
-
----
-
-Desarrollado con ❤️ para clubes deportivos
+MIT License

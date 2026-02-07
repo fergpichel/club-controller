@@ -162,7 +162,7 @@
     <q-drawer
       v-model="leftDrawerOpen"
       :mini="miniState"
-      :width="190"
+      :width="140"
       :mini-width="64"
       :breakpoint="1024"
       class="main-drawer"
@@ -197,6 +197,11 @@
             <div v-if="authStore.isAccountant" class="nav-section">
               <p v-if="!miniState || $q.screen.lt.md" class="nav-section-title">Gestoría</p>
               <NavItem v-for="item in accountantNavItems" :key="item.name" :item="item" :mini="miniState && $q.screen.gt.sm" />
+            </div>
+
+            <div v-if="authStore.isSuperAdmin" class="nav-section">
+              <p v-if="!miniState || $q.screen.lt.md" class="nav-section-title">Super Admin</p>
+              <NavItem v-for="item in superAdminNavItems" :key="item.name" :item="item" :mini="miniState && $q.screen.gt.sm" />
             </div>
           </nav>
         </div>
@@ -462,6 +467,10 @@ const visibleAdminNavItems = computed(() => {
 const accountantNavItems = [
   { name: 'accountant', icon: 'account_balance', label: 'Gestoría', to: { name: 'accountant' } },
   { name: 'accountant-export', icon: 'download', label: 'Exportar', to: { name: 'accountant-export' } }
+]
+
+const superAdminNavItems = [
+  { name: 'superadmin', icon: 'admin_panel_settings', label: 'Backoffice', to: { name: 'superadmin-dashboard' } }
 ]
 
 const mobileNavItems = computed(() => {

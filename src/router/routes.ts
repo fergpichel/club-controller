@@ -248,6 +248,26 @@ const routes: RouteRecordRaw[] = [
         path: 'profile', 
         name: 'profile',
         component: () => import('src/pages/settings/ProfilePage.vue')
+      },
+
+    ]
+  },
+
+  // Superadmin backoffice (separate layout)
+  {
+    path: '/superadmin',
+    component: () => import('src/layouts/SuperAdminLayout.vue'),
+    meta: { requiresAuth: true, requiresSuperAdmin: true },
+    children: [
+      {
+        path: '',
+        name: 'superadmin-dashboard',
+        component: () => import('src/pages/superadmin/SuperAdminDashboard.vue')
+      },
+      {
+        path: 'ai-usage',
+        name: 'ai-usage',
+        component: () => import('src/pages/superadmin/AIUsagePage.vue')
       }
     ]
   },

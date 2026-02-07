@@ -64,6 +64,8 @@ export const useAuthStore = defineStore('auth', () => {
   const isAccountant = computed(() => user.value?.role === 'viewer')
   /** Employee: can only see own data */
   const isEmployee = computed(() => user.value?.role === 'employee')
+  /** Super admin — cross-club access to backoffice (AI usage logs, etc.) */
+  const isSuperAdmin = computed(() => user.value?.isSuperAdmin === true)
 
   // Actions
   async function setUser(fbUser: FirebaseUser) {
@@ -623,6 +625,7 @@ export const useAuthStore = defineStore('auth', () => {
     isController,
     isAccountant,
     isEmployee,
+    isSuperAdmin,
     canManageSettings,
     canDoClosings,
     canApprove,

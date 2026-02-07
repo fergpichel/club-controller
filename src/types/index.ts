@@ -26,6 +26,7 @@ export interface User {
   photoURL?: string
   role: UserRole
   clubId: string
+  isSuperAdmin?: boolean  // Cross-club admin for backoffice (AI usage logs, etc.)
   invitedBy?: string   // uid of the user who invited this user
   createdAt: Date
   updatedAt: Date
