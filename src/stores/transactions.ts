@@ -29,7 +29,7 @@ import type {
   TransactionStatus,
   Attachment
 } from 'src/types'
-import { computeSeason, generateSearchKeywords } from 'src/types'
+import { computeSeason, generateSearchKeywords, getSeasonDates } from 'src/types'
 import { startOfMonth, endOfMonth } from 'date-fns'
 import { logger } from 'src/utils/logger'
 
@@ -144,17 +144,19 @@ export const useTransactionsStore = defineStore('transactions', () => {
         constraints.push(where('projectId', '==', filters.projectId))
       }
 
+      // Season filter: use date range (1 Jul–30 Jun) so it works with or without stored season field
+      if (filters.season) {
+        const { start, end } = getSeasonDates(filters.season)
+        constraints.push(where('date', '>=', Timestamp.fromDate(start)))
+        constraints.push(where('date', '<=', Timestamp.fromDate(end)))
+      }
+
       if (filters.dateFrom) {
         constraints.push(where('date', '>=', Timestamp.fromDate(filters.dateFrom)))
       }
 
       if (filters.dateTo) {
         constraints.push(where('date', '<=', Timestamp.fromDate(filters.dateTo)))
-      }
-
-      // Season filter
-      if (filters.season) {
-        constraints.push(where('season', '==', filters.season))
       }
 
       // Text search via searchKeywords (server-side)
@@ -240,6 +242,86 @@ export const useTransactionsStore = defineStore('transactions', () => {
       uncategorizedServerCount.value = snapshot.data().count
     } catch (e) {
       logger.error('Error fetching uncategorized count:', e)
+    }
+  }
+
+  /** Counts by query with current filters (for badges). */
+  const pendingFilteredCount = ref(0)
+  const uncategorizedFilteredCount = ref(0)
+
+  /** Build base query constraints from filters (same as fetchTransactions, without limit/startAfter/status/uncategorized). */
+  function buildCountConstraints(filters: TransactionFilters) {
+    const authStore = useAuthStore()
+    if (!authStore.clubId) return null
+    const isEmployeeQuery = authStore.isEmployee && !!authStore.user?.uid
+    const constraints: (ReturnType<typeof where> | ReturnType<typeof orderBy>)[] = [
+      where('clubId', '==', authStore.clubId),
+      ...(!isEmployeeQuery ? [orderBy('date', 'desc')] : [])
+    ]
+    if (isEmployeeQuery) {
+      constraints.push(where('createdBy', '==', authStore.user!.uid))
+    }
+    if (filters.type) constraints.push(where('type', '==', filters.type))
+    if (filters.categoryId) constraints.push(where('categoryId', '==', filters.categoryId))
+    if (filters.teamId) constraints.push(where('teamId', '==', filters.teamId))
+    if (filters.projectId) constraints.push(where('projectId', '==', filters.projectId))
+    if (filters.season) {
+      const { start, end } = getSeasonDates(filters.season)
+      constraints.push(where('date', '>=', Timestamp.fromDate(start)))
+      constraints.push(where('date', '<=', Timestamp.fromDate(end)))
+    }
+    if (filters.dateFrom) constraints.push(where('date', '>=', Timestamp.fromDate(filters.dateFrom)))
+    if (filters.dateTo) constraints.push(where('date', '<=', Timestamp.fromDate(filters.dateTo)))
+    if (filters.searchQuery && filters.searchQuery.trim().length >= 2) {
+      const normalized = filters.searchQuery
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .trim()
+      constraints.push(where('searchKeywords', 'array-contains', normalized))
+    }
+    return constraints
+  }
+
+  /** Server-side count of pending transactions with the same filters as the list. */
+  async function fetchPendingFilteredCount(filters: TransactionFilters): Promise<void> {
+    const constraints = buildCountConstraints(filters)
+    if (!constraints) return
+    try {
+      const q = query(
+        collection(db, 'transactions'),
+        ...constraints,
+        where('status', '==', 'pending')
+      )
+      const snapshot = await getCountFromServer(q)
+      pendingFilteredCount.value = snapshot.data().count
+    } catch (e) {
+      logger.error('Error fetching pending filtered count:', e)
+      pendingFilteredCount.value = 0
+    }
+  }
+
+  /** Server-side count of uncategorized transactions with the same filters as the list. */
+  async function fetchUncategorizedFilteredCount(filters: TransactionFilters): Promise<void> {
+    const constraints = buildCountConstraints(filters)
+    if (!constraints) return
+    const categoriesStore = useCategoriesStore()
+    const uncatIds = Array.from(categoriesStore.uncategorizedIds)
+    if (uncatIds.length === 0) {
+      uncategorizedFilteredCount.value = 0
+      return
+    }
+    try {
+      const q = query(
+        collection(db, 'transactions'),
+        ...constraints,
+        where('categoryId', 'in', uncatIds)
+      )
+      const snapshot = await getCountFromServer(q)
+      uncategorizedFilteredCount.value = snapshot.data().count
+    } catch (e) {
+      logger.error('Error fetching uncategorized filtered count:', e)
+      uncategorizedFilteredCount.value = 0
     }
   }
 
@@ -782,6 +864,8 @@ export const useTransactionsStore = defineStore('transactions', () => {
     pendingTransactions,
     uncategorizedTransactions,
     uncategorizedServerCount,
+    pendingFilteredCount,
+    uncategorizedFilteredCount,
     totalIncome,
     totalExpenses,
     balance,
@@ -791,6 +875,8 @@ export const useTransactionsStore = defineStore('transactions', () => {
     // Actions
     fetchTransactions,
     fetchUncategorizedCount,
+    fetchPendingFilteredCount,
+    fetchUncategorizedFilteredCount,
     fetchMonthTransactions,
     fetchAllInDateRange,
     loadMore,

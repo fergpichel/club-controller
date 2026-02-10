@@ -9,6 +9,7 @@
       <nav class="nav-links">
         <a href="#funcionalidades">Funcionalidades</a>
         <a href="#ia">IA</a>
+        <a href="#seguridad">Seguridad</a>
         <a href="#ecosistema">Ecosistema</a>
         <router-link to="/auth/login" class="nav-login">Iniciar sesión</router-link>
         <router-link to="/auth/register" class="nav-cta">Probar gratis</router-link>
@@ -26,8 +27,8 @@
       <div class="hero-content container">
         <span class="hero-badge">Gestión financiera inteligente</span>
         <h1 class="hero-title">
-          Clubes deportivos <br />
-          <span class="hero-title-accent">al siguiente nivel</span>
+          Las cuentas del club, <br />
+          <span class="branding-tagline">claras, compartidas y seguras.</span>
         </h1>
         <p class="hero-subtitle">
           Una app sencilla para alinear ingresos y gastos, patrocinadores, proveedores y tesorería.
@@ -127,6 +128,35 @@
           <li>Integración bancaria para conciliación automática</li>
           <li>Recordatorios de cobro a patrocinadores</li>
           <li>Firma electrónica en acuerdos y facturas</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- Seguridad -->
+    <section id="seguridad" class="section section-security">
+      <div class="container">
+        <h2 class="section-title">Privadas por diseño</h2>
+        <p class="section-lead section-security-lead">
+          Transparencia no significa exposición.
+          En Teempad Funds la información es compartida solo con quien debe verla, y siempre bajo control.
+        </p>
+        <ul class="security-list">
+          <li>
+            <span class="security-icon" aria-hidden="true"><q-icon name="person_add" size="20px" /></span>
+            Acceso solo por invitación
+          </li>
+          <li>
+            <span class="security-icon" aria-hidden="true"><q-icon name="admin_panel_settings" size="20px" /></span>
+            Permisos según rol en la directiva
+          </li>
+          <li>
+            <span class="security-icon" aria-hidden="true"><q-icon name="history" size="20px" /></span>
+            Historial de cambios y trazabilidad
+          </li>
+          <li>
+            <span class="security-icon" aria-hidden="true"><q-icon name="domain" size="20px" /></span>
+            Datos siempre del club
+          </li>
         </ul>
       </div>
     </section>
@@ -386,6 +416,13 @@ const landingRef = ref<HTMLElement | null>(null)
   gap: var(--space-4);
 }
 
+.branding-tagline {
+  background: linear-gradient(135deg, #a78bfa 0%, #38bdf8 50%, #38f898 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
 .btn-primary {
   display: inline-flex;
   align-items: center;
@@ -579,6 +616,55 @@ const landingRef = ref<HTMLElement | null>(null)
   height: 6px;
   border-radius: 50%;
   background: var(--color-accent);
+}
+
+/* Security */
+.section-security {
+  background: var(--color-bg-tertiary);
+}
+
+.section-security-lead {
+  max-width: 560px;
+}
+
+.security-list {
+  max-width: 520px;
+  margin: 0 auto;
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: var(--space-3);
+}
+
+.security-list li {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-4) var(--space-5);
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-lg);
+  font-size: 1rem;
+  color: var(--color-text-secondary);
+  line-height: 1.5;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.security-list li:hover {
+  border-color: rgba(0, 212, 170, 0.3);
+  box-shadow: 0 4px 12px rgba(0, 212, 170, 0.08);
+}
+
+.security-icon {
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-md);
+  background: rgba(0, 212, 170, 0.12);
+  color: #00D4AA;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 /* Ecosystem */

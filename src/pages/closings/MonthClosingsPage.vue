@@ -138,11 +138,29 @@
               <q-btn
                 v-else
                 outline
-                color="grey"
+                color="primary"
                 label="Ver transacciones"
                 size="sm"
                 class="full-width"
-                :to="{ name: 'transactions' }"
+                :to="transactionsLink(month)"
+              />
+              <q-btn
+                v-if="month.closing?.status !== 'closed' && month.isPast"
+                flat
+                dense
+                size="sm"
+                label="Ver transacciones"
+                class="full-width q-mt-xs"
+                :to="transactionsLink(month)"
+              />
+              <q-btn
+                v-else-if="month.closing?.status === 'closed'"
+                flat
+                dense
+                size="sm"
+                label="Ver transacciones"
+                class="full-width q-mt-xs"
+                :to="transactionsLink(month)"
               />
             </div>
           </div>
@@ -291,6 +309,12 @@ const canGenerateForecasts = computed(() => {
 });
 
 // Methods
+
+/** Link to transactions page filtered by this month (query month=YYYY-MM) */
+function transactionsLink(month: { year: number; number: number }) {
+  const monthStr = `${month.year}-${String(month.number).padStart(2, '0')}`;
+  return { name: 'transactions' as const, query: { month: monthStr } };
+}
 
 function closeMonth(monthNumber: number, year: number) {
   monthToCloseNumber.value = monthNumber;

@@ -1,199 +1,193 @@
 <template>
-  <div class="register-card animate-fade-in">
-    <q-card class="auth-card">
-      <q-card-section>
-        <h2 class="auth-title">Crear cuenta</h2>
-        <p class="auth-subtitle">
-          {{ pendingInvitation
-            ? `Has sido invitado a unirte a ${pendingInvitation.clubName}`
-            : registrationOpen
-              ? 'Registra tu club y comienza a gestionar sus finanzas'
-              : 'El registro está disponible solo por invitación'
-          }}
+  <div class="register-page">
+    <div class="form-header">
+      <h1>Crear cuenta</h1>
+      <p>
+        {{ pendingInvitation
+          ? `Has sido invitado a unirte a ${pendingInvitation.clubName}`
+          : registrationOpen
+            ? 'Registra tu club y comienza a gestionar sus finanzas'
+            : 'El registro está disponible solo por invitación'
+        }}
+      </p>
+    </div>
+
+    <!-- Registration closed banner -->
+    <div v-if="!registrationOpen && !pendingInvitation && !loadingConfig" class="banner banner-warning">
+      <q-icon name="lock" size="20px" />
+      <div>
+        <strong>Registro cerrado</strong>
+        <p>
+          Para unirte, pide a un administrador que te envíe una invitación.
+          Si tienes una, introduce tu email abajo y se detectará automáticamente.
         </p>
-      </q-card-section>
+      </div>
+    </div>
 
-      <!-- Registration closed banner -->
-      <q-card-section v-if="!registrationOpen && !pendingInvitation && !loadingConfig">
-        <q-banner class="bg-orange-1 text-orange-9 q-mb-md" rounded>
-          <template #avatar><q-icon name="lock" color="orange" /></template>
-          <div>
-            <strong>Registro cerrado</strong>
-            <p class="q-mb-none q-mt-xs" style="font-size: 0.85rem">
-              Para unirte, pide a un administrador que te envíe una invitación.
-              Si tienes una, introduce tu email abajo y se detectará automáticamente.
-            </p>
-          </div>
-        </q-banner>
-      </q-card-section>
+    <!-- Invitation Banner -->
+    <div v-if="pendingInvitation" class="banner banner-info">
+      <q-icon name="celebration" size="20px" />
+      <span>
+        Invitación de <strong>{{ pendingInvitation.invitedByName }}</strong>
+        · Rol: <strong>{{ roleLabel(pendingInvitation.role) }}</strong>
+      </span>
+    </div>
 
-      <q-card-section>
-        <!-- Invitation Banner -->
-        <q-banner v-if="pendingInvitation" class="bg-blue-1 text-blue-9 q-mb-md" rounded>
-          <template #avatar><q-icon name="celebration" color="blue" /></template>
-          Invitación de <strong>{{ pendingInvitation.invitedByName }}</strong>
-          · Rol: <strong>{{ roleLabel(pendingInvitation.role) }}</strong>
-        </q-banner>
+    <transition name="slide-fade">
+      <div v-if="authStore.error" class="error-banner">
+        <q-icon name="error" size="18px" />
+        <span>{{ authStore.error }}</span>
+      </div>
+    </transition>
 
-        <q-form class="auth-form" @submit.prevent="handleRegister">
-          <q-input
+    <q-form class="register-form" @submit.prevent="handleRegister">
+      <div class="input-group">
+        <label for="reg-name">Nombre completo</label>
+        <div class="input-wrapper" :class="{ focused: displayName }">
+          <q-icon name="person" size="18px" class="input-icon" />
+          <input
+            id="reg-name"
             v-model="displayName"
-            label="Nombre completo"
-            outlined
-            :rules="[val => !!val || 'Nombre requerido']"
-          >
-            <template #prepend>
-              <q-icon name="person" />
-            </template>
-          </q-input>
+            type="text"
+            placeholder="Tu nombre"
+            autocomplete="name"
+            required
+          />
+        </div>
+      </div>
 
-          <q-input
+      <div class="input-group">
+        <label for="reg-email">Email</label>
+        <div class="input-wrapper" :class="{ focused: email }">
+          <q-icon name="mail" size="18px" class="input-icon" />
+          <input
+            id="reg-email"
             v-model="email"
             type="email"
-            label="Email"
-            outlined
-            :rules="[val => !!val || 'Email requerido', val => isValidEmail(val) || 'Email inválido']"
+            placeholder="tu@email.com"
+            autocomplete="email"
+            required
             @blur="checkForInvitation"
-          >
-            <template #prepend>
-              <q-icon name="email" />
-            </template>
-            <template v-if="checkingInvitation" #append>
-              <q-spinner size="18px" />
-            </template>
-          </q-input>
+          />
+          <span v-if="checkingInvitation" class="input-append">
+            <q-spinner size="18px" />
+          </span>
+        </div>
+      </div>
 
-          <!-- Only show club name when creating a new club (no invitation, registration open) -->
-          <q-input
-            v-if="!pendingInvitation && registrationOpen"
+      <div v-if="!pendingInvitation && registrationOpen" class="input-group">
+        <label for="reg-club">Nombre del club</label>
+        <div class="input-wrapper" :class="{ focused: clubName }">
+          <q-icon name="sports_soccer" size="18px" class="input-icon" />
+          <input
+            id="reg-club"
             v-model="clubName"
-            label="Nombre del club"
-            outlined
-            :rules="[val => !pendingInvitation && !val ? 'Nombre del club requerido' : true]"
-          >
-            <template #prepend>
-              <q-icon name="sports_soccer" />
-            </template>
-          </q-input>
+            type="text"
+            placeholder="Nombre de tu club"
+          />
+        </div>
+      </div>
 
-          <q-input
+      <div class="input-group">
+        <label for="reg-password">Contraseña</label>
+        <div class="input-wrapper" :class="{ focused: password }">
+          <q-icon name="lock" size="18px" class="input-icon" />
+          <input
+            id="reg-password"
             v-model="password"
             :type="showPassword ? 'text' : 'password'"
-            label="Contraseña"
-            outlined
-            :rules="[
-              val => !!val || 'Contraseña requerida',
-              val => val.length >= 8 || 'Mínimo 8 caracteres',
-              val => /[A-Z]/.test(val) || 'Debe incluir al menos una mayúscula',
-              val => /[0-9]/.test(val) || 'Debe incluir al menos un número',
-              val => /[^A-Za-z0-9]/.test(val) || 'Debe incluir al menos un carácter especial'
-            ]"
-          >
-            <template #prepend>
-              <q-icon name="lock" />
-            </template>
-            <template #append>
-              <q-icon
-                :name="showPassword ? 'visibility_off' : 'visibility'"
-                class="cursor-pointer"
-                @click="showPassword = !showPassword"
-              />
-            </template>
-          </q-input>
+            placeholder="Mínimo 8 caracteres, mayúscula, número y símbolo"
+            autocomplete="new-password"
+            required
+          />
+          <button type="button" class="toggle-password" @click="showPassword = !showPassword" tabindex="-1">
+            <q-icon :name="showPassword ? 'visibility_off' : 'visibility'" size="18px" />
+          </button>
+        </div>
+      </div>
 
-          <q-input
+      <div class="input-group">
+        <label for="reg-confirm">Confirmar contraseña</label>
+        <div class="input-wrapper" :class="{ focused: confirmPassword, error: confirmPassword && password !== confirmPassword }">
+          <q-icon name="lock" size="18px" class="input-icon" />
+          <input
+            id="reg-confirm"
             v-model="confirmPassword"
             :type="showPassword ? 'text' : 'password'"
-            label="Confirmar contraseña"
-            outlined
-            :rules="[
-              val => !!val || 'Confirma la contraseña',
-              val => val === password || 'Las contraseñas no coinciden'
-            ]"
-          >
-            <template #prepend>
-              <q-icon name="lock" />
-            </template>
-          </q-input>
-
-          <q-checkbox
-            v-model="acceptTerms"
-            class="q-mb-md"
-          >
-            <span class="terms-text">
-              Acepto los <a href="#" @click.prevent>términos y condiciones</a>
-              y la <a href="#" @click.prevent>política de privacidad</a>
-            </span>
-          </q-checkbox>
-
-          <q-banner v-if="authStore.error" class="bg-negative text-white q-mb-md" rounded>
-            {{ authStore.error }}
-          </q-banner>
-
-          <q-btn
-            type="submit"
-            color="primary"
-            :label="pendingInvitation ? 'Unirme al club' : 'Crear cuenta'"
-            class="full-width btn-primary"
-            size="lg"
-            :loading="authStore.loading"
-            :disable="!acceptTerms || (!registrationOpen && !pendingInvitation)"
+            placeholder="Repite la contraseña"
+            autocomplete="new-password"
+            required
           />
-        </q-form>
-      </q-card-section>
+        </div>
+        <span v-if="confirmPassword && password !== confirmPassword" class="field-error">Las contraseñas no coinciden</span>
+      </div>
 
-      <q-separator />
+      <label class="terms-checkbox">
+        <input v-model="acceptTerms" type="checkbox" />
+        <span class="checkmark"></span>
+        <span class="terms-text">
+          Acepto los <a href="#" @click.prevent>términos y condiciones</a>
+          y la <a href="#" @click.prevent>política de privacidad</a>
+        </span>
+      </label>
 
-      <q-card-section class="text-center">
-        <p class="q-mb-none">
-          ¿Ya tienes cuenta?
-          <router-link :to="{ name: 'login' }" class="login-link">
-            Inicia sesión
-          </router-link>
-        </p>
-      </q-card-section>
-    </q-card>
+      <button
+        type="submit"
+        class="btn-primary"
+        :disabled="!acceptTerms || (!registrationOpen && !pendingInvitation) || authStore.loading"
+      >
+        <q-spinner v-if="authStore.loading" color="white" size="20px" />
+        <template v-else>
+          <span>{{ pendingInvitation ? 'Unirme al club' : 'Crear cuenta' }}</span>
+          <q-icon name="arrow_forward" size="18px" />
+        </template>
+      </button>
+    </q-form>
+
+    <div class="auth-cta">
+      <span>¿Ya tienes cuenta?</span>
+      <router-link :to="{ name: 'login' }">Iniciar sesión</router-link>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
-import { useRouter, useRoute } from 'vue-router';
-import { useAuthStore } from 'src/stores/auth';
-import { doc, getDoc } from 'firebase/firestore';
-import { db } from 'src/boot/firebase';
-import type { ClubInvitation, UserRole } from 'src/types';
-import { ROLE_LABELS } from 'src/types';
+import { ref, onMounted } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
+import { useAuthStore } from 'src/stores/auth'
+import { doc, getDoc } from 'firebase/firestore'
+import { db } from 'src/boot/firebase'
+import type { ClubInvitation, UserRole } from 'src/types'
+import { ROLE_LABELS } from 'src/types'
 import { logger } from 'src/utils/logger'
 
-const router = useRouter();
-const route = useRoute();
-const authStore = useAuthStore();
+const router = useRouter()
+const route = useRoute()
+const authStore = useAuthStore()
 
-const displayName = ref('');
-const email = ref('');
-const clubName = ref('');
-const password = ref('');
-const confirmPassword = ref('');
-const showPassword = ref(false);
-const acceptTerms = ref(false);
-const pendingInvitation = ref<ClubInvitation | null>(null);
-const checkingInvitation = ref(false);
-const registrationOpen = ref(true); // default open until config loads
-const loadingConfig = ref(true);
+const displayName = ref('')
+const email = ref('')
+const clubName = ref('')
+const password = ref('')
+const confirmPassword = ref('')
+const showPassword = ref(false)
+const acceptTerms = ref(false)
+const pendingInvitation = ref<ClubInvitation | null>(null)
+const checkingInvitation = ref(false)
+const registrationOpen = ref(true)
+const loadingConfig = ref(true)
 
 function roleLabel(role: UserRole): string {
   return ROLE_LABELS[role] || role
 }
 
-function isValidEmail(email: string): boolean {
-  const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  return re.test(email);
+function isValidEmail(emailVal: string): boolean {
+  const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+  return re.test(emailVal)
 }
 
 async function checkForInvitation() {
   if (!email.value || !isValidEmail(email.value)) return
-
   checkingInvitation.value = true
   try {
     pendingInvitation.value = await authStore.checkInvitation(email.value)
@@ -203,17 +197,14 @@ async function checkForInvitation() {
 }
 
 async function handleRegister() {
-  if (password.value !== confirmPassword.value) return;
-  if (!acceptTerms.value) return;
-
-  // Block if registration closed and no invitation
-  if (!registrationOpen.value && !pendingInvitation.value) return;
+  if (password.value !== confirmPassword.value) return
+  if (!acceptTerms.value) return
+  if (!registrationOpen.value && !pendingInvitation.value) return
 
   try {
     let success: boolean
 
     if (pendingInvitation.value) {
-      // Register as invited member — join existing club
       success = await authStore.registerWithInvitation(
         email.value,
         password.value,
@@ -221,26 +212,22 @@ async function handleRegister() {
         pendingInvitation.value
       )
     } else {
-      // Create new club + register as admin (only if registration is open)
       if (!clubName.value) return
-
-      // Club will be created AFTER auth user is created (inside register())
-      // This ensures Firestore rules (isAuth()) are satisfied
       success = await authStore.register(
         email.value,
         password.value,
         displayName.value,
-        '',        // no existing clubId
+        '',
         'admin',
-        clubName.value  // newClubName — triggers club creation post-auth
-      );
+        clubName.value
+      )
     }
 
     if (success) {
-      router.push({ name: 'dashboard' });
+      router.push({ name: 'dashboard' })
     }
   } catch (error) {
-    logger.error('Error during registration:', error);
+    logger.error('Error during registration:', error)
   }
 }
 
@@ -251,12 +238,10 @@ async function loadAppConfig() {
     if (configDoc.exists()) {
       registrationOpen.value = configDoc.data().registrationOpen === true
     } else {
-      // If config doc doesn't exist yet, allow registration (first-time setup)
       registrationOpen.value = true
     }
   } catch (e) {
     logger.error('Error loading app config:', e)
-    // Default to closed if we can't read config (safer)
     registrationOpen.value = false
   } finally {
     loadingConfig.value = false
@@ -265,8 +250,6 @@ async function loadAppConfig() {
 
 onMounted(() => {
   loadAppConfig()
-
-  // Pre-fill email from query param (e.g. from invitation link)
   const inviteEmail = route.query.email as string
   if (inviteEmail) {
     email.value = inviteEmail
@@ -276,48 +259,265 @@ onMounted(() => {
 </script>
 
 <style lang="scss" scoped>
-.auth-card {
-  background: rgba(255, 255, 255, 0.95);
-  backdrop-filter: blur(20px);
-  border-radius: 24px;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-  padding: 16px;
+.register-page {
+  width: 100%;
 }
 
-.auth-title {
+.form-header {
+  margin-bottom: 1.5rem;
+}
+
+.form-header h1 {
   font-size: 1.75rem;
   font-weight: 700;
-  margin-bottom: 8px;
-  color: var(--color-primary);
+  color: var(--color-text-primary, #f1f5f9);
+  margin: 0 0 0.5rem;
 }
 
-.auth-subtitle {
-  color: var(--color-on-surface-variant);
+.form-header p {
+  color: var(--color-text-muted, #94a3b8);
   margin: 0;
-  font-size: 0.95rem;
+  font-size: 0.9375rem;
 }
 
-.auth-form {
+.banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 1rem;
+  border-radius: 12px;
+  margin-bottom: 1rem;
+  font-size: 0.875rem;
+}
+
+.banner-warning {
+  background: rgba(249, 115, 22, 0.1);
+  border: 1px solid rgba(249, 115, 22, 0.25);
+  color: #fb923c;
+}
+
+.banner-warning p {
+  margin: 0.25rem 0 0;
+  opacity: 0.95;
+}
+
+.banner-info {
+  background: rgba(59, 130, 246, 0.1);
+  border: 1px solid rgba(59, 130, 246, 0.25);
+  color: #93c5fd;
+  margin-bottom: 1rem;
+}
+
+.error-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 1rem;
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  border-radius: 12px;
+  margin-bottom: 1rem;
+  color: #f87171;
+  font-size: 0.875rem;
+}
+
+.register-form {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 1rem;
 }
 
-.terms-text {
-  font-size: 0.875rem;
-  color: var(--color-on-surface-variant);
-}
+.input-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
 
-.login-link {
-  color: var(--color-primary);
-  font-weight: 600;
-  text-decoration: none;
-
-  &:hover {
-    text-decoration: underline;
+  label {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--color-text-secondary, #cbd5e1);
   }
 }
+
+.input-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+  background: linear-gradient(135deg, rgba(0, 212, 170, 0.1), rgba(56, 189, 248, 0.06)) padding-box,
+              linear-gradient(135deg, rgba(0, 212, 170, 0.25), rgba(56, 189, 248, 0.15)) border-box;
+  border: 2px solid transparent;
+  border-radius: 12px;
+  transition: all 0.3s ease;
+
+  &.focused,
+  &:focus-within {
+    background: linear-gradient(135deg, rgba(0, 212, 170, 0.15), rgba(56, 189, 248, 0.1)) padding-box,
+                linear-gradient(135deg, #00d4aa, #38bdf8) border-box;
+    box-shadow: 0 0 20px rgba(0, 212, 170, 0.15);
+  }
+
+  &.error {
+    background: linear-gradient(135deg, rgba(239, 68, 68, 0.1), rgba(239, 68, 68, 0.05)) padding-box,
+                linear-gradient(135deg, #ef4444, #f87171) border-box;
+  }
+
+  .input-icon {
+    position: absolute;
+    left: 1rem;
+    color: var(--color-text-muted, #64748b);
+  }
+
+  &:focus-within .input-icon {
+    color: #00d4aa;
+  }
+
+  input {
+    width: 100%;
+    padding: 0.875rem 1rem 0.875rem 2.75rem;
+    background: transparent;
+    border: none;
+    font-size: 0.9375rem;
+    color: var(--color-text-primary, #f1f5f9);
+    outline: none;
+  }
+
+  input::placeholder {
+    color: var(--color-text-muted, #64748b);
+  }
+
+  .input-append {
+    position: absolute;
+    right: 1rem;
+  }
+
+  .toggle-password {
+    position: absolute;
+    right: 0.75rem;
+    padding: 0.5rem;
+    color: var(--color-text-muted, #64748b);
+    background: none;
+    border: none;
+    cursor: pointer;
+    border-radius: 6px;
+  }
+
+  .toggle-password:hover {
+    color: var(--color-text-primary, #f1f5f9);
+    background: rgba(255, 255, 255, 0.05);
+  }
+}
+
+.field-error {
+  font-size: 0.75rem;
+  color: #f87171;
+}
+
+.terms-checkbox {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+  color: var(--color-text-secondary, #cbd5e1);
+  cursor: pointer;
+  user-select: none;
+}
+
+.terms-checkbox input {
+  display: none;
+}
+
+.terms-checkbox .checkmark {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  margin-top: 2px;
+  border: 2px solid var(--color-border, #334155);
+  border-radius: 4px;
+  position: relative;
+  transition: all 0.2s;
+}
+
+.terms-checkbox input:checked + .checkmark {
+  background: #00d4aa;
+  border-color: #00d4aa;
+}
+
+.terms-checkbox input:checked + .checkmark::after {
+  content: '';
+  position: absolute;
+  left: 5px;
+  top: 2px;
+  width: 4px;
+  height: 8px;
+  border: solid #0f172a;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+.terms-text a {
+  color: #00d4aa;
+  text-decoration: none;
+}
+
+.terms-text a:hover {
+  text-decoration: underline;
+}
+
+.btn-primary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 1rem;
+  background: linear-gradient(135deg, #00d4aa 0%, #00f5c4 100%);
+  color: #0f172a;
+  border: none;
+  border-radius: 12px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.btn-primary:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0, 212, 170, 0.4);
+}
+
+.btn-primary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.auth-cta {
+  text-align: center;
+  margin-top: 2rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--color-border, #334155);
+  font-size: 0.875rem;
+  color: var(--color-text-muted, #64748b);
+}
+
+.auth-cta a {
+  color: #00d4aa;
+  font-weight: 600;
+  text-decoration: none;
+  margin-left: 0.25rem;
+}
+
+.auth-cta a:hover {
+  color: #00f5c4;
+  text-decoration: underline;
+}
+
+.slide-fade-enter-active,
+.slide-fade-leave-active {
+  transition: all 0.3s ease;
+}
+
+.slide-fade-enter-from,
+.slide-fade-leave-to {
+  opacity: 0;
+  transform: translateY(-8px);
+}
 </style>
-
-
-

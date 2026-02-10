@@ -5,7 +5,10 @@
       <div class="row items-center justify-between">
         <div>
           <h1>Transacciones</h1>
-          <p class="header-subtitle">{{ transactionsStore.transactions.length }} movimientos</p>
+          <p class="header-subtitle">
+            {{ transactionsStore.transactions.length }} movimientos
+            <span v-if="dateRange" class="header-filter-badge">{{ dateFilterDisplayLabel }}</span>
+          </p>
         </div>
         <q-btn
           v-if="!$q.screen.lt.md"
@@ -99,8 +102,10 @@
           <q-btn
             outline
             dense
-            icon="date_range"
+            :icon="dateRange ? 'event' : 'date_range'"
+            :label="dateRange ? dateFilterShortLabel : undefined"
             class="filter-date-btn"
+            :class="{ 'filter-date-btn--active': !!dateRange }"
           >
             <q-popup-proxy cover transition-show="scale" transition-hide="scale">
               <q-date
@@ -113,7 +118,7 @@
                 </div>
               </q-date>
             </q-popup-proxy>
-            <q-tooltip>{{ dateRangeLabel }}</q-tooltip>
+            <q-tooltip>{{ dateRange ? dateFilterDisplayLabel : 'Seleccionar fechas' }}</q-tooltip>
           </q-btn>
         </div>
       </div>
@@ -132,10 +137,10 @@
           <q-tab name="income" label="Ingresos" />
           <q-tab name="expense" label="Gastos" />
           <q-tab v-if="authStore.canApprove" name="pending" label="Pendientes">
-            <q-badge v-if="pendingCount > 0" color="warning" floating>{{ pendingCount }}</q-badge>
+            <q-badge v-if="transactionsStore.pendingFilteredCount > 0" color="warning" floating>{{ transactionsStore.pendingFilteredCount }}</q-badge>
           </q-tab>
           <q-tab name="uncategorized" label="Sin categorizar">
-            <q-badge v-if="uncategorizedCount > 0" color="amber" floating>{{ uncategorizedCount }}</q-badge>
+            <q-badge v-if="transactionsStore.uncategorizedFilteredCount > 0" color="amber" floating>{{ transactionsStore.uncategorizedFilteredCount }}</q-badge>
           </q-tab>
         </q-tabs>
         <q-btn
@@ -387,8 +392,11 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from 'vue';
+import { useRoute } from 'vue-router';
 import { useQuasar } from 'quasar';
 import { useDebounceFn } from '@vueuse/core';
+import { startOfMonth, endOfMonth, format, parseISO } from 'date-fns';
+import { es } from 'date-fns/locale';
 import { useAuthStore } from 'src/stores/auth';
 import { useTransactionsStore } from 'src/stores/transactions';
 import { useCategoriesStore } from 'src/stores/categories';
@@ -401,6 +409,7 @@ import type { TransactionFilters, TransactionType, TransactionStatus } from 'src
 import { getSeasonOptions } from 'src/types';
 
 const $q = useQuasar();
+const route = useRoute();
 const authStore = useAuthStore();
 const transactionsStore = useTransactionsStore();
 const categoriesStore = useCategoriesStore();
@@ -448,9 +457,28 @@ const hasFilters = computed(() => {
   return !!(searchQuery.value || filterType.value || filterCategory.value || filterTeam.value || filterSeason.value || dateRange.value || activeTab.value !== 'all');
 });
 
-const dateRangeLabel = computed(() => {
-  if (!dateRange.value) return 'Fechas';
-  return `${dateRange.value.from} - ${dateRange.value.to}`;
+/** Label for header badge and tooltip when a date range is selected (e.g. "Febrero 2025" or "1 ene - 15 ene 2025") */
+const dateFilterDisplayLabel = computed(() => {
+  if (!dateRange.value) return '';
+  const from = parseISO(dateRange.value.from);
+  const to = parseISO(dateRange.value.to);
+  const sameMonth = from.getMonth() === to.getMonth() && from.getFullYear() === to.getFullYear();
+  if (sameMonth) {
+    return format(from, 'MMMM yyyy', { locale: es });
+  }
+  return `${format(from, 'd MMM', { locale: es })} - ${format(to, 'd MMM yyyy', { locale: es })}`;
+});
+
+/** Short label for the date button when range is active (e.g. "Feb 2025") */
+const dateFilterShortLabel = computed(() => {
+  if (!dateRange.value) return '';
+  const from = parseISO(dateRange.value.from);
+  const to = parseISO(dateRange.value.to);
+  const sameMonth = from.getMonth() === to.getMonth() && from.getFullYear() === to.getFullYear();
+  if (sameMonth) {
+    return format(from, 'MMM yyyy', { locale: es });
+  }
+  return `${format(from, 'd/M')} - ${format(to, 'd/M')}`;
 });
 
 // Build filters for Firebase query
@@ -508,18 +536,14 @@ function buildFilters(): TransactionFilters {
 // Now that uncategorized is server-side, filteredTransactions = store transactions
 const filteredTransactions = computed(() => transactionsStore.transactions);
 
-// Counts
-const pendingCount = computed(() => {
-  return transactionsStore.transactions.filter(t => t.status === 'pending').length;
-});
-
-// Server-side count (lightweight aggregation, no docs downloaded)
-const uncategorizedCount = computed(() => transactionsStore.uncategorizedServerCount);
-
-// Fetch transactions with current filters
+// Fetch transactions with current filters and update badge counts (server-side count queries)
 async function fetchWithFilters() {
   const filters = buildFilters();
   await transactionsStore.fetchTransactions(filters);
+  await Promise.all([
+    transactionsStore.fetchPendingFilteredCount(filters),
+    transactionsStore.fetchUncategorizedFilteredCount(filters)
+  ]);
 }
 
 // Debounced fetch for search input (300ms delay to avoid firing on every keystroke)
@@ -545,6 +569,20 @@ async function loadMore() {
   }
 }
 
+// Apply month from URL query (?month=YYYY-MM) — e.g. from Cierres "Ver transacciones"
+function applyMonthFromQuery() {
+  const monthParam = route.query.month;
+  if (typeof monthParam !== 'string' || !/^\d{4}-\d{2}$/.test(monthParam)) return;
+  const [y, m] = monthParam.split('-').map(Number);
+  if (m < 1 || m > 12) return;
+  const start = startOfMonth(new Date(y, m - 1));
+  const end = endOfMonth(new Date(y, m - 1));
+  dateRange.value = {
+    from: start.toISOString().slice(0, 10),
+    to: end.toISOString().slice(0, 10)
+  };
+}
+
 // Watch filter changes - fetch from server immediately
 watch([filterType, filterCategory, filterTeam, filterSeason, dateRange, activeTab], () => {
   fetchWithFilters();
@@ -554,6 +592,11 @@ watch([filterType, filterCategory, filterTeam, filterSeason, dateRange, activeTa
 watch(searchQuery, () => {
   debouncedSearch();
 });
+
+// When entering with ?month=YYYY-MM, apply date filter and fetch
+watch(() => route.query.month, () => {
+  applyMonthFromQuery();
+}, { immediate: true });
 
 // === AI Auto-categorization ===
 const aiAvailable = isAIAvailable()
@@ -833,6 +876,29 @@ onMounted(async () => {
     border-color: var(--color-text-tertiary) !important;
     background: var(--color-bg-tertiary) !important;
   }
+
+  &--active {
+    border-color: var(--color-accent) !important;
+    background: rgba(99, 91, 255, 0.08) !important;
+    color: var(--color-accent) !important;
+    font-weight: 600;
+
+    &:hover {
+      background: rgba(99, 91, 255, 0.12) !important;
+      border-color: var(--color-accent) !important;
+    }
+  }
+}
+
+.header-filter-badge {
+  display: inline-block;
+  margin-left: 10px;
+  padding: 2px 10px;
+  border-radius: var(--radius-full);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  background: rgba(99, 91, 255, 0.12);
+  color: var(--color-accent);
 }
 
 :deep(.q-tabs) {
