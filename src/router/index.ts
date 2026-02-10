@@ -24,7 +24,7 @@ export default route(function (/* { store, ssrContext } */) {
     const authStore = useAuthStore();
     
     // Public routes that don't require authentication
-    const publicRoutes = ['login', 'register', 'forgot-password'];
+    const publicRoutes = ['landing', 'login', 'register', 'forgot-password'];
     const isPublicRoute = publicRoutes.includes(to.name as string);
     const isSetupRoute = to.name === 'setup';
     
@@ -52,7 +52,7 @@ export default route(function (/* { store, ssrContext } */) {
       return;
     }
     
-    // Authenticated trying to access auth pages → dashboard
+    // Authenticated trying to access landing or auth pages → dashboard
     if (authStore.isAuthenticated && !authStore.needsSetup && isPublicRoute) {
       next({ name: 'dashboard' });
       return;

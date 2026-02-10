@@ -3,10 +3,10 @@
     <div class="login-content animate-in">
       <!-- Brand -->
       <div class="brand-section">
-        <div class="brand-logo">
-          <q-icon name="sports_soccer" size="32px" />
-        </div>
-        <h1 class="brand-name">Teempad Funds</h1>
+        <router-link to="/" class="brand-logo-link">
+          <img src="/favicon.svg" alt="Teempad Funds" class="brand-logo-img" />
+        </router-link>
+        <h1 class="brand-name">Teempad <span class="brand-suffix">Funds</span></h1>
         <p class="brand-tagline">Gestión financiera inteligente para clubes deportivos</p>
       </div>
 
@@ -95,6 +95,9 @@
             ¿Eres nuevo aquí?
             <router-link :to="{ name: 'register' }">Crea una cuenta</router-link>
           </p>
+          <p class="back-to-landing">
+            <router-link to="/">← Volver al inicio</router-link>
+          </p>
         </div>
       </div>
 
@@ -120,15 +123,16 @@ const rememberMe = ref(false)
 async function handleLogin() {
   const success = await authStore.login(email.value, password.value)
   if (success) {
-    router.push({ name: 'dashboard' })
+    const redirect = (router.currentRoute.value.query.redirect as string) || '/dashboard'
+    router.push(redirect.startsWith('/') ? redirect : '/dashboard')
   }
 }
 
 async function handleGoogleLogin() {
   const success = await authStore.loginWithGoogle()
   if (success) {
-    // Router guard will send to /setup if no club, or /dashboard if they have one
-    router.push({ name: 'dashboard' })
+    const redirect = (router.currentRoute.value.query.redirect as string) || '/dashboard'
+    router.push(redirect.startsWith('/') ? redirect : '/dashboard')
   }
 }
 </script>
@@ -153,17 +157,16 @@ async function handleGoogleLogin() {
   margin-bottom: var(--space-8);
 }
 
-.brand-logo {
+.brand-logo-link {
+  display: inline-block;
+  margin: 0 auto var(--space-4);
+}
+
+.brand-logo-img {
   width: 64px;
   height: 64px;
-  background: var(--gradient-brand);
-  border-radius: var(--radius-lg);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin: 0 auto var(--space-4);
-  color: white;
-  box-shadow: 0 8px 24px rgba(10, 37, 64, 0.25);
+  object-fit: contain;
+  display: block;
 }
 
 .brand-name {
@@ -173,6 +176,13 @@ async function handleGoogleLogin() {
   color: white;
   margin: 0 0 var(--space-1);
   letter-spacing: -0.02em;
+}
+
+.brand-suffix {
+  background: linear-gradient(135deg, #00D4AA, #00F5C4);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
 }
 
 .brand-tagline {
@@ -445,6 +455,20 @@ async function handleGoogleLogin() {
   background: var(--color-bg-tertiary);
   text-align: center;
   border-top: 1px solid var(--color-border-light);
+
+  .back-to-landing {
+    margin: var(--space-3) 0 0;
+    font-size: 0.875rem;
+  }
+
+  .back-to-landing a {
+    color: var(--color-text-tertiary);
+    text-decoration: none;
+  }
+
+  .back-to-landing a:hover {
+    color: var(--color-accent);
+  }
 
   p {
     font-size: 0.875rem;

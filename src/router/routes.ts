@@ -1,6 +1,14 @@
 import type { RouteRecordRaw } from 'vue-router';
 
 const routes: RouteRecordRaw[] = [
+  // Landing (raíz pública)
+  {
+    path: '/',
+    name: 'landing',
+    component: () => import('src/pages/LandingPage.vue'),
+    meta: { isPublic: true }
+  },
+
   // Auth routes (no layout)
   {
     path: '/auth',
@@ -29,13 +37,12 @@ const routes: RouteRecordRaw[] = [
     ]
   },
 
-  // Main app routes
+  // Main app routes (bajo /dashboard)
   {
-    path: '/',
+    path: '/dashboard',
     component: () => import('src/layouts/MainLayout.vue'),
     meta: { requiresAuth: true },
     children: [
-      // Dashboard
       { 
         path: '', 
         name: 'dashboard',

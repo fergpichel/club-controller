@@ -394,7 +394,7 @@
 
           <!-- Budget Variance Cards -->
           <div class="variance-grid">
-            <div class="variance-card" v-for="cat in budgetVarianceByCategory" :key="cat.categoryId">
+            <div v-for="cat in budgetVarianceByCategory" :key="cat.categoryId" class="variance-card">
               <div class="variance-header">
                 <q-icon :name="cat.icon" :style="{ color: cat.color }" size="20px" />
                 <span class="variance-name">{{ cat.name }}</span>

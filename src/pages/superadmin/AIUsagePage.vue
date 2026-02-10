@@ -338,7 +338,7 @@ const stats = computed(() => {
 
 // ─── Helpers ──────────────────────────────────────────────────────────
 function formatDate(date: Date): string {
-  return format(date, "dd MMM yyyy · HH:mm", { locale: es })
+  return format(date, 'dd MMM yyyy · HH:mm', { locale: es })
 }
 
 function formatDuration(ms: number): string {
