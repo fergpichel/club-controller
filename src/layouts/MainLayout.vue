@@ -50,6 +50,10 @@
           </router-link>
         </div>
 
+        <div v-if="visibleAdminNavItems.length > 0" class="rail-nav-separator" aria-hidden="true">
+          <span v-if="navExpanded" class="rail-nav-separator-label">Gestión</span>
+        </div>
+
         <div v-if="visibleAdminNavItems.length > 0" class="nav-section">
           <router-link
             v-for="item in visibleAdminNavItems"
@@ -73,6 +77,10 @@
               {{ item.badge > 9 ? '9+' : item.badge }}
             </q-badge>
           </router-link>
+        </div>
+
+        <div v-if="authStore.isAccountant" class="rail-nav-separator" aria-hidden="true">
+          <span v-if="navExpanded" class="rail-nav-separator-label">Gestoría</span>
         </div>
 
         <div v-if="authStore.isAccountant" class="nav-section">
@@ -107,7 +115,7 @@
     </aside>
 
     <!-- Main Content: QLayout para que QPageContainer y QPage tengan altura correcta -->
-    <main class="main-content" :style="mainContentStyle">
+    <main ref="mainContentRef" class="main-content" :style="mainContentStyle">
       <q-layout view="hHh lpR fFf" class="main-layout">
       <q-header class="main-header" :class="{ 'header-scrolled': scrolled }">
         <q-toolbar class="header-toolbar">
@@ -513,7 +521,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useQuasar } from 'quasar'
 import { useDebounceFn } from '@vueuse/core'
@@ -553,6 +561,8 @@ const searchInputRef = ref<HTMLInputElement | null>(null)
 const searchLoading = ref(false)
 const scrolled = ref(false)
 const fabHidden = ref(false)
+const mainContentRef = ref<HTMLElement | null>(null)
+let pageContainerEl: HTMLElement | null = null
 
 // Nav items
 const mainNavItems = [
@@ -826,10 +836,18 @@ async function handleLogout() {
   router.push({ name: 'login' })
 }
 
-// Scroll handler
+// Scroll handler (scroll ocurre en .q-page-container, no en window)
 let lastScrollTop = 0
 function handleScroll() {
   const st = window.scrollY
+  scrolled.value = st > 10
+  fabHidden.value = st > lastScrollTop && st > 100
+  lastScrollTop = st
+}
+
+function handlePageContainerScroll(e: Event) {
+  const el = e.target as HTMLElement
+  const st = el.scrollTop
   scrolled.value = st > 10
   fabHidden.value = st > lastScrollTop && st > 100
   lastScrollTop = st
@@ -865,6 +883,14 @@ onMounted(async () => {
   window.addEventListener('keydown', handleKeyboardShortcut)
 
   await loadData()
+
+  // Scroll real ocurre en .q-page-container; escuchar ahí para header/FAB
+  await nextTick()
+  const container = mainContentRef.value?.querySelector('.q-page-container')
+  if (container instanceof HTMLElement) {
+    pageContainerEl = container
+    pageContainerEl.addEventListener('scroll', handlePageContainerScroll, { passive: true })
+  }
 })
 
 // Watch for auth changes (e.g. after registration redirect)
@@ -877,6 +903,9 @@ watch(() => authStore.isAuthenticated, async (isAuth) => {
 onUnmounted(() => {
   window.removeEventListener('scroll', handleScroll)
   window.removeEventListener('keydown', handleKeyboardShortcut)
+  if (pageContainerEl) {
+    pageContainerEl.removeEventListener('scroll', handlePageContainerScroll)
+  }
 })
 </script>
 
@@ -1200,6 +1229,15 @@ onUnmounted(() => {
   flex-direction: column;
 }
 
+/* Área de página scrollable: ocupa el espacio restante y hace scroll */
+.main-content :deep(.q-page-container) {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+}
+
 .app-shell.is-mobile .main-content {
   padding-bottom: calc(72px + env(safe-area-inset-bottom, 0px));
 }
@@ -1287,9 +1325,29 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   padding: var(--space-2);
-  gap: var(--space-4);
+  gap: var(--space-2);
   overflow-y: auto;
   overflow-x: hidden;
+}
+
+.rail-nav-separator {
+  flex-shrink: 0;
+  margin: var(--space-2) var(--space-3);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--color-border);
+  min-height: 0;
+}
+
+.rail-nav-separator-label {
+  display: block;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-text-muted);
+  margin-top: -0.25rem;
+  margin-bottom: var(--space-1);
+  padding-left: var(--space-1);
 }
 
 .rail .nav-section {
