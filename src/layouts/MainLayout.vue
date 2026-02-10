@@ -1,27 +1,135 @@
 <template>
-  <q-layout view="lHh LpR fFf">
-    <!-- Header -->
-    <q-header class="main-header" :class="{ 'header-scrolled': scrolled }">
-      <q-toolbar class="header-toolbar">
-        <q-btn
-          v-if="$q.screen.lt.md"
-          flat
-          dense
-          round
-          icon="menu"
-          aria-label="Menu"
-          class="menu-btn"
-          @click="toggleLeftDrawer"
-        />
-
-        <router-link :to="{ name: 'dashboard' }" class="header-brand">
-          <div class="brand-logo">
-            <q-icon name="sports_soccer" size="22px" />
+  <div class="app-shell" :class="{ 'nav-expanded': navExpanded, 'is-mobile': isMobile }">
+    <!-- Desktop: Rail que se expande/contrae al pasar el ratón (como grooter-stats) -->
+    <aside
+      v-if="!isMobile"
+      class="rail"
+      @mouseenter="navExpanded = true"
+      @mouseleave="navExpanded = false"
+    >
+      <div class="rail-header">
+        <router-link :to="{ name: 'dashboard' }" class="logo">
+          <div class="logo-wrap">
+            <img src="/favicon.svg" alt="Teempad Funds" class="logo-img" />
           </div>
-          <span v-if="$q.screen.gt.xs" class="brand-text">Teempad Funds</span>
+          <transition name="fade">
+            <div v-if="navExpanded" class="logo-text-wrap">
+              <span class="logo-name">Teempad</span>
+              <span class="logo-suffix">Funds</span>
+            </div>
+          </transition>
         </router-link>
+      </div>
 
-        <q-space />
+      <nav class="rail-nav">
+        <div class="nav-section">
+          <router-link
+            v-for="item in visibleMainNavItems"
+            :key="item.name"
+            :to="item.to"
+            class="nav-item"
+            :class="{
+              active: isActiveRoute(item.name),
+              'active-parent': isParentRoute(item.name)
+            }"
+          >
+            <span class="nav-item-icon">
+              <q-icon :name="item.icon" size="20px" />
+            </span>
+            <transition name="fade">
+              <span v-if="navExpanded" class="nav-label">{{ item.label }}</span>
+            </transition>
+            <q-badge
+              v-if="item.name === 'statistics' && statsBadgeCount > 0"
+              color="negative"
+              rounded
+              class="nav-badge"
+            >
+              {{ statsBadgeCount > 9 ? '9+' : statsBadgeCount }}
+            </q-badge>
+          </router-link>
+        </div>
+
+        <div v-if="visibleAdminNavItems.length > 0" class="nav-section">
+          <router-link
+            v-for="item in visibleAdminNavItems"
+            :key="item.name"
+            :to="item.to"
+            class="nav-item"
+            :class="{ active: isActiveRoute(item.name) }"
+          >
+            <span class="nav-item-icon">
+              <q-icon :name="item.icon" size="20px" />
+            </span>
+            <transition name="fade">
+              <span v-if="navExpanded" class="nav-label">{{ item.label }}</span>
+            </transition>
+            <q-badge
+              v-if="item.badge && item.badge > 0"
+              color="negative"
+              rounded
+              class="nav-badge"
+            >
+              {{ item.badge > 9 ? '9+' : item.badge }}
+            </q-badge>
+          </router-link>
+        </div>
+
+        <div v-if="authStore.isAccountant" class="nav-section">
+          <router-link
+            v-for="item in accountantNavItems"
+            :key="item.name"
+            :to="item.to"
+            class="nav-item"
+            :class="{ active: isActiveRoute(item.name) }"
+          >
+            <span class="nav-item-icon">
+              <q-icon :name="item.icon" size="20px" />
+            </span>
+            <transition name="fade">
+              <span v-if="navExpanded" class="nav-label">{{ item.label }}</span>
+            </transition>
+          </router-link>
+        </div>
+
+      </nav>
+
+      <div class="rail-footer">
+        <div class="user-block" @click="toggleUserMenu">
+          <q-avatar size="28px" class="user-avatar">
+            {{ userInitials }}
+          </q-avatar>
+          <transition name="fade">
+            <span v-if="navExpanded" class="user-name">{{ authStore.user?.displayName || 'Usuario' }}</span>
+          </transition>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main Content: QLayout para que QPageContainer y QPage tengan altura correcta -->
+    <main class="main-content" :style="mainContentStyle">
+      <q-layout view="hHh lpR fFf" class="main-layout">
+      <q-header class="main-header" :class="{ 'header-scrolled': scrolled }">
+        <q-toolbar class="header-toolbar">
+          <q-btn
+            v-if="isMobile"
+            flat
+            dense
+            round
+            icon="menu"
+            aria-label="Más opciones"
+            class="menu-btn"
+            @click="showMoreDrawer = true"
+          />
+
+          <router-link :to="{ name: 'dashboard' }" class="header-brand">
+            <div class="brand-logo">
+              <img src="/favicon.svg" alt="" class="brand-logo-img" />
+            </div>
+            <span class="brand-text">Teempad Funds</span>
+          </router-link>
+
+          <q-space />
 
         <!-- Search -->
         <div v-if="$q.screen.gt.sm" class="header-search" @click="showSearchDialog = true">
@@ -106,7 +214,7 @@
             </q-menu>
           </q-btn>
 
-          <q-btn flat round class="user-btn">
+          <q-btn v-if="isMobile" flat round class="user-btn">
             <q-avatar size="34px" class="user-avatar">
               {{ userInitials }}
             </q-avatar>
@@ -123,6 +231,10 @@
                 </div>
                 <q-separator />
                 <q-list class="user-menu-list">
+                  <q-item v-if="authStore.isSuperAdmin" v-close-popup clickable :to="{ name: 'admin-dashboard' }">
+                    <q-item-section avatar><q-icon name="admin_panel_settings" color="purple" /></q-item-section>
+                    <q-item-section>Backoffice Admin</q-item-section>
+                  </q-item>
                   <q-item v-close-popup clickable :to="{ name: 'profile' }">
                     <q-item-section avatar><q-icon name="person_outline" /></q-item-section>
                     <q-item-section>Mi perfil</q-item-section>
@@ -158,97 +270,121 @@
       </q-toolbar>
     </q-header>
 
-    <!-- Sidebar -->
-    <q-drawer
-      v-model="leftDrawerOpen"
-      :mini="miniState"
-      :width="140"
-      :mini-width="64"
-      :breakpoint="1024"
-      class="main-drawer"
-      :behavior="$q.screen.lt.md ? 'mobile' : 'desktop'"
-    >
-      <q-scroll-area class="fit drawer-scroll">
-        <div class="drawer-content">
-          <!-- Logo mini -->
-          <div v-if="miniState && $q.screen.gt.sm" class="drawer-logo-mini">
-            <div class="logo-mini">
-              <q-icon name="sports_soccer" size="22px" />
+      <q-page-container>
+        <router-view v-slot="{ Component }">
+          <transition name="page-fade" mode="out-in">
+            <component :is="Component" />
+          </transition>
+        </router-view>
+      </q-page-container>
+      </q-layout>
+    </main>
+
+    <!-- Mobile: Bottom navigation (like grooter-stats) -->
+    <nav v-if="isMobile" class="bottom-nav" aria-label="Navegación principal">
+      <router-link
+        v-for="item in primaryNavItems"
+        :key="item.name"
+        :to="item.to"
+        class="bottom-nav-item"
+        :class="{ active: isActiveRoute(item.name) }"
+      >
+        <q-icon :name="item.icon" size="24px" class="bottom-nav-icon" />
+        <span class="bottom-nav-label">{{ item.label }}</span>
+      </router-link>
+      <button
+        type="button"
+        class="bottom-nav-item bottom-nav-more"
+        :class="{ active: showMoreDrawer }"
+        aria-label="Más opciones"
+        @click="showMoreDrawer = true"
+      >
+        <q-icon name="menu" size="24px" class="bottom-nav-icon" />
+        <span class="bottom-nav-label">Más</span>
+      </button>
+    </nav>
+
+    <!-- Mobile: Más drawer -->
+    <Teleport to="body">
+      <Transition name="drawer">
+        <div v-if="isMobile && showMoreDrawer" class="more-drawer-overlay" @click.self="closeMoreDrawer">
+          <div class="more-drawer" role="dialog" aria-label="Más opciones">
+            <div class="more-drawer-header">
+              <h2>Más</h2>
+              <button type="button" class="close-btn" aria-label="Cerrar" @click="closeMoreDrawer">
+                <q-icon name="close" size="22px" />
+              </button>
+            </div>
+            <nav class="more-drawer-nav">
+              <router-link
+                v-for="item in secondaryNavItems"
+                :key="item.name"
+                :to="item.to"
+                class="more-drawer-item"
+                @click="closeMoreDrawer"
+              >
+                <q-icon :name="item.icon" size="22px" />
+                <span>{{ item.label }}</span>
+              </router-link>
+              <button type="button" class="more-drawer-item more-drawer-account" @click="openUserMenuAndCloseDrawer">
+                <q-icon name="person_outline" size="22px" />
+                <span>Cuenta y Ajustes</span>
+              </button>
+            </nav>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
+
+    <!-- User Menu (desktop: from rail; mobile: from header or Más) - keep existing q-menu in header for mobile; desktop needs a Teleport popup -->
+    <Teleport to="body">
+      <transition name="slide-up">
+        <div v-if="showUserMenuPopup" class="user-menu-overlay" @click.self="showUserMenuPopup = false">
+          <div class="user-menu-popup">
+            <div class="user-menu-header">
+              <q-avatar size="48px" class="user-avatar-lg">
+                {{ userInitials }}
+              </q-avatar>
+              <div class="user-info">
+                <p class="user-name">{{ authStore.user?.displayName || 'Usuario' }}</p>
+                <p class="user-email">{{ authStore.user?.email }}</p>
+              </div>
+            </div>
+            <div class="user-menu-actions">
+              <router-link
+                v-if="authStore.isSuperAdmin"
+                :to="{ name: 'admin-dashboard' }"
+                class="user-menu-item admin-link"
+                @click="showUserMenuPopup = false"
+              >
+                <q-icon name="admin_panel_settings" size="20px" />
+                <span>Backoffice Admin</span>
+              </router-link>
+              <router-link :to="{ name: 'settings' }" class="user-menu-item" @click="showUserMenuPopup = false">
+                <q-icon name="settings" size="20px" />
+                <span>Configuración</span>
+              </router-link>
+              <router-link :to="{ name: 'profile' }" class="user-menu-item" @click="showUserMenuPopup = false">
+                <q-icon name="person_outline" size="20px" />
+                <span>Mi perfil</span>
+              </router-link>
+              <button class="user-menu-item" @click="toggleDarkMode">
+                <q-icon :name="$q.dark.isActive ? 'light_mode' : 'dark_mode'" size="20px" />
+                <span>{{ $q.dark.isActive ? 'Modo claro' : 'Modo oscuro' }}</span>
+              </button>
+              <button class="user-menu-item logout" @click="handleLogout">
+                <q-icon name="logout" size="20px" />
+                <span>Cerrar sesión</span>
+              </button>
             </div>
           </div>
-
-          <!-- Navigation -->
-          <nav class="nav-sections">
-            <div class="nav-section">
-              <p v-if="!miniState || $q.screen.lt.md" class="nav-section-title">Principal</p>
-              <NavItem v-for="item in visibleMainNavItems" :key="item.name" :item="item" :mini="miniState && $q.screen.gt.sm" />
-            </div>
-
-            <div v-if="authStore.canViewAll && managementNavItems.length > 0" class="nav-section">
-              <p v-if="!miniState || $q.screen.lt.md" class="nav-section-title">Gestión</p>
-              <NavItem v-for="item in managementNavItems" :key="item.name" :item="item" :mini="miniState && $q.screen.gt.sm" />
-            </div>
-
-            <div v-if="visibleAdminNavItems.length > 0" class="nav-section">
-              <p v-if="!miniState || $q.screen.lt.md" class="nav-section-title">Admin</p>
-              <NavItem v-for="item in visibleAdminNavItems" :key="item.name" :item="item" :mini="miniState && $q.screen.gt.sm" />
-            </div>
-
-            <div v-if="authStore.isAccountant" class="nav-section">
-              <p v-if="!miniState || $q.screen.lt.md" class="nav-section-title">Gestoría</p>
-              <NavItem v-for="item in accountantNavItems" :key="item.name" :item="item" :mini="miniState && $q.screen.gt.sm" />
-            </div>
-
-            <div v-if="authStore.isSuperAdmin" class="nav-section">
-              <p v-if="!miniState || $q.screen.lt.md" class="nav-section-title">Super Admin</p>
-              <NavItem v-for="item in superAdminNavItems" :key="item.name" :item="item" :mini="miniState && $q.screen.gt.sm" />
-            </div>
-          </nav>
         </div>
-      </q-scroll-area>
-
-      <!-- Toggle -->
-      <div v-if="$q.screen.gt.sm" class="drawer-toggle">
-        <q-btn
-          flat
-          round
-          dense
-          size="sm"
-          :icon="miniState ? 'chevron_right' : 'chevron_left'"
-          class="toggle-btn"
-          @click="miniState = !miniState"
-        />
-      </div>
-    </q-drawer>
-
-    <!-- Page -->
-    <q-page-container>
-      <router-view v-slot="{ Component }">
-        <transition name="page-fade" mode="out-in">
-          <component :is="Component" />
-        </transition>
-      </router-view>
-    </q-page-container>
-
-    <!-- Mobile Nav -->
-    <q-footer v-if="$q.screen.lt.md" class="mobile-nav">
-      <nav class="nav-container">
-        <router-link
-          v-for="item in mobileNavItems"
-          :key="item.name"
-          :to="item.to"
-          class="nav-item"
-          :class="{ active: isActiveRoute(item.name) }"
-        >
-          <q-icon :name="item.icon" />
-          <span class="nav-label">{{ item.label }}</span>
-        </router-link>
-      </nav>
-    </q-footer>
+      </transition>
+    </Teleport>
 
     <!-- FAB Mobile -->
     <transition name="fab-scale">
-      <div v-if="$q.screen.lt.md && authStore.canEdit && !fabHidden" class="fab-wrapper">
+      <div v-if="isMobile && authStore.canEdit && !fabHidden" class="fab-wrapper">
         <q-btn
           fab
           color="primary"
@@ -373,7 +509,7 @@
         </q-card-section>
       </q-card>
     </q-dialog>
-  </q-layout>
+  </div>
 </template>
 
 <script setup lang="ts">
@@ -387,7 +523,6 @@ import { useCategoriesStore } from 'src/stores/categories'
 import { useTeamsStore } from 'src/stores/teams'
 import { useCatalogsStore } from 'src/stores/catalogs'
 import { useNotificationsStore } from 'src/stores/notifications'
-import NavItem from 'src/components/NavItem.vue'
 import { useSessionTimeout } from 'src/composables/useSessionTimeout'
 import type { Transaction, Notification } from 'src/types'
 import { formatCurrency, formatDateShort } from 'src/utils/formatters'
@@ -406,8 +541,10 @@ const notificationsStore = useNotificationsStore()
 // Auto-logout after 30 min of inactivity
 useSessionTimeout()
 
-const leftDrawerOpen = ref(true)  // Default to open for desktop
-const miniState = ref(false)
+const isMobile = computed(() => $q.screen.lt.md)
+const navExpanded = ref(false)
+const showMoreDrawer = ref(false)
+const showUserMenuPopup = ref(false)
 const showQuickAdd = ref(false)
 const showSearchDialog = ref(false)
 const searchQuery = ref('')
@@ -433,8 +570,6 @@ const visibleMainNavItems = computed(() => {
   }
   return mainNavItems
 })
-
-const managementNavItems: { name: string; icon: string; label: string; to: { name: string } }[] = []
 
 // Admin section — items shown based on permissions
 const visibleAdminNavItems = computed(() => {
@@ -469,21 +604,34 @@ const accountantNavItems = [
   { name: 'accountant-export', icon: 'download', label: 'Exportar', to: { name: 'accountant-export' } }
 ]
 
-const superAdminNavItems = [
-  { name: 'admin', icon: 'admin_panel_settings', label: 'Backoffice', to: { name: 'admin-dashboard' } }
-]
+// Badge para Estadísticas (ej. notificaciones o avisos)
+const statsBadgeCount = computed(() => 0)
 
-const mobileNavItems = computed(() => {
-  const items = [
-    { name: 'dashboard', icon: 'dashboard', label: 'Inicio', to: { name: 'dashboard' } },
-    { name: 'expenses', icon: 'trending_down', label: 'Gastos', to: { name: 'expenses' } },
-    { name: 'income', icon: 'trending_up', label: 'Ingresos', to: { name: 'income' } }
+// Mobile bottom nav: 4 primary items + "Más"
+const primaryNavItems = computed(() => [
+  { name: 'dashboard', icon: 'dashboard', label: 'Inicio', to: { name: 'dashboard' } },
+  { name: 'expenses', icon: 'trending_down', label: 'Gastos', to: { name: 'expenses' } },
+  { name: 'income', icon: 'trending_up', label: 'Ingresos', to: { name: 'income' } }
+])
+
+// Mobile "Más" drawer: secondary nav + Cuenta
+const secondaryNavItems = computed(() => {
+  const items: { name: string; icon: string; label: string; to: { name: string } }[] = [
+    { name: 'transactions', icon: 'receipt_long', label: 'Transacciones', to: { name: 'transactions' } }
   ]
   if (authStore.canViewStats) {
-    items.push({ name: 'statistics', icon: 'bar_chart', label: 'Stats', to: { name: 'statistics' } })
+    items.push({ name: 'statistics', icon: 'bar_chart', label: 'Estadísticas', to: { name: 'statistics' } })
   }
+  if (authStore.canApprove) {
+    items.push({ name: 'pending', icon: 'pending_actions', label: 'Pendientes', to: { name: 'pending' } })
+  }
+  items.push({ name: 'settings', icon: 'settings', label: 'Ajustes', to: { name: 'settings' } })
   return items
 })
+
+const mainContentStyle = computed(() => ({
+  marginLeft: isMobile.value ? '0' : (navExpanded.value ? '200px' : '60px')
+}))
 
 // Computed
 const userInitials = computed(() => {
@@ -634,12 +782,31 @@ function selectPrevResult() {
 }
 
 // Methods
-function toggleLeftDrawer() {
-  leftDrawerOpen.value = !leftDrawerOpen.value
+function closeMoreDrawer() {
+  showMoreDrawer.value = false
+}
+
+function openUserMenuAndCloseDrawer() {
+  showMoreDrawer.value = false
+  showUserMenuPopup.value = true
+}
+
+function toggleUserMenu() {
+  showUserMenuPopup.value = !showUserMenuPopup.value
 }
 
 function isActiveRoute(name: string): boolean {
   return route.name === name
+}
+
+// Padre activo: resaltar en azul cuando la ruta actual es hija (ej. Transacciones en azul en Gastos/Ingresos)
+function isParentRoute(name: string): boolean {
+  if (route.name === name) return false
+  const r = route.name as string
+  if (name === 'transactions') {
+    return ['transactions', 'expenses', 'income', 'transaction-detail', 'new-transaction'].includes(r)
+  }
+  return false
 }
 
 function goToNewTransaction(type: 'income' | 'expense') {
@@ -653,6 +820,7 @@ function toggleDarkMode() {
 }
 
 async function handleLogout() {
+  showUserMenuPopup.value = false
   notificationsStore.stop()
   await authStore.logout()
   router.push({ name: 'login' })
@@ -668,7 +836,7 @@ function handleScroll() {
 }
 
 watch(() => route.name, () => {
-  if ($q.screen.lt.md) leftDrawerOpen.value = false
+  if (isMobile.value) showMoreDrawer.value = false
 })
 
 async function loadData() {
@@ -747,12 +915,18 @@ onUnmounted(() => {
   .brand-logo {
     width: 36px;
     height: 36px;
-    background: var(--gradient-brand);
     border-radius: var(--radius-md);
     display: flex;
     align-items: center;
     justify-content: center;
-    color: white;
+    overflow: hidden;
+    flex-shrink: 0;
+  }
+
+  .brand-logo-img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
   }
 
   .brand-text {
@@ -1000,67 +1174,548 @@ onUnmounted(() => {
   padding: var(--space-3);
 }
 
-// === DRAWER ===
-.main-drawer {
-  background: var(--color-bg-elevated);
-  border-right: 1px solid var(--color-border-light) !important;
-}
-
-.drawer-scroll {
-  padding-top: var(--space-3);
-}
-
-.drawer-content {
-  padding: 0 var(--space-1);
-}
-
-.drawer-logo-mini {
+// === APP SHELL (rail + main) ===
+.app-shell {
   display: flex;
-  justify-content: center;
-  padding: var(--space-4) 0;
+  min-height: 100vh;
+  height: 100vh;
+  background: var(--color-bg-primary);
+}
 
-  .logo-mini {
-    width: 40px;
-    height: 40px;
-    background: var(--gradient-brand);
-    border-radius: var(--radius-md);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: white;
+.main-content {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  transition: margin-left 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  overflow: hidden;
+}
+
+/* QLayout interno: debe llenar main para que QPageContainer funcione */
+.main-content .main-layout {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.app-shell.is-mobile .main-content {
+  padding-bottom: calc(72px + env(safe-area-inset-bottom, 0px));
+}
+
+// === RAIL (desktop: 60px contraído, 200px expandido al hover - como grooter-stats) ===
+.rail {
+  position: fixed;
+  left: 0;
+  top: 0;
+  height: 100vh;
+  width: 60px;
+  display: flex;
+  flex-direction: column;
+  background: var(--color-bg-secondary);
+  border-right: 1px solid var(--color-border);
+  z-index: 100;
+  overflow: hidden;
+  transition: width 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  transform: translateZ(0);
+  will-change: width;
+}
+
+.nav-expanded .rail {
+  width: 200px;
+}
+
+.rail-header {
+  height: 60px;
+  min-height: 60px;
+  padding: 0 var(--space-4);
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  box-sizing: border-box;
+}
+
+.rail .logo {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  text-decoration: none;
+  color: inherit;
+}
+
+.rail .logo-wrap {
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.rail .logo-img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.rail .logo-text-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.rail .logo-name {
+  font-weight: 700;
+  font-size: 1rem;
+  letter-spacing: -0.02em;
+  color: var(--color-text-primary);
+}
+
+.rail .logo-suffix {
+  font-weight: 600;
+  font-size: 0.8125rem;
+  letter-spacing: -0.02em;
+  color: var(--color-accent);
+}
+
+.rail-nav {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-2);
+  gap: var(--space-4);
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.rail .nav-section {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.rail .nav-item {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 0 var(--space-3);
+  height: 44px;
+  min-height: 44px;
+  max-height: 44px;
+  border-radius: var(--radius-md);
+  color: var(--color-text-tertiary);
+  text-decoration: none;
+  transition: all var(--duration-fast) var(--ease-out);
+  cursor: pointer;
+  position: relative;
+  box-sizing: border-box;
+}
+
+.rail .nav-item-icon {
+  width: 20px;
+  min-width: 20px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+}
+
+.rail .nav-item:hover {
+  background: var(--color-bg-tertiary);
+  color: var(--color-text-primary);
+}
+
+.rail .nav-item.active {
+  background: rgba(99, 91, 255, 0.12);
+  color: var(--color-text-primary);
+}
+
+.rail .nav-item.active .nav-label {
+  font-weight: 600;
+}
+
+.rail .nav-item.active-parent {
+  color: var(--color-accent);
+}
+
+.rail .nav-item.active-parent .nav-label {
+  font-weight: 500;
+}
+
+.rail .nav-label {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.rail .nav-badge {
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  font-size: 0.6875rem;
+  font-weight: 700;
+}
+
+/* Contraído: badge sobre el icono para no provocar salto al expandir */
+.app-shell:not(.nav-expanded) .rail .nav-item {
+  position: relative;
+}
+
+.app-shell:not(.nav-expanded) .rail .nav-badge {
+  position: absolute;
+  top: 4px;
+  left: 20px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  font-size: 0.625rem;
+}
+
+.rail-footer {
+  flex-shrink: 0;
+  padding: var(--space-2);
+  border-top: 1px solid var(--color-border);
+  box-sizing: border-box;
+}
+
+.rail .user-block {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-out);
+}
+
+.rail .user-block:hover {
+  background: var(--color-bg-tertiary);
+}
+
+.rail .user-avatar {
+  background: var(--gradient-accent);
+  color: white;
+  font-size: 0.75rem;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.rail .user-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--color-text-primary);
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+// === BOTTOM NAV (mobile, like grooter-stats) ===
+.bottom-nav {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: space-around;
+  align-items: stretch;
+  min-height: 64px;
+  padding-bottom: env(safe-area-inset-bottom, 0);
+  padding-left: env(safe-area-inset-left, 0);
+  padding-right: env(safe-area-inset-right, 0);
+  background: var(--color-bg-secondary);
+  border-top: 1px solid var(--color-border);
+  z-index: 90;
+  box-shadow: 0 -2px 12px rgba(0, 0, 0, 0.08);
+}
+
+.bottom-nav-item {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  flex: 1;
+  min-width: 0;
+  min-height: 48px;
+  padding: 8px 4px;
+  color: var(--color-text-muted);
+  text-decoration: none;
+  background: none;
+  border: none;
+  font: inherit;
+  cursor: pointer;
+  transition: color 0.15s, background 0.15s;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.bottom-nav-item:hover {
+  color: var(--color-text-primary);
+}
+
+.bottom-nav-item.active {
+  color: var(--color-accent);
+}
+
+.bottom-nav-icon {
+  flex-shrink: 0;
+}
+
+.bottom-nav-label {
+  font-size: 0.6875rem;
+  font-weight: 500;
+  line-height: 1.2;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+@media (min-width: 360px) {
+  .bottom-nav-label {
+    font-size: 0.75rem;
   }
 }
 
-.nav-sections {
+// === MÁS DRAWER (mobile) ===
+.more-drawer-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 1000;
   display: flex;
-  flex-direction: column;
-  gap: var(--space-4);
+  align-items: flex-end;
+  justify-content: center;
 }
 
-.nav-section-title {
-  font-size: 0.625rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--color-text-muted);
-  padding: 0 var(--space-3);
+.more-drawer {
+  width: 100%;
+  max-height: 70vh;
+  background: var(--color-bg-secondary);
+  border-radius: 16px 16px 0 0;
+  overflow: hidden;
+  box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.2);
+  padding-bottom: env(safe-area-inset-bottom, 0);
+}
+
+.more-drawer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.more-drawer-header h2 {
+  font-size: 1.125rem;
+  font-weight: 600;
+  margin: 0;
+  color: var(--color-text-primary);
+}
+
+.more-drawer-nav {
+  display: flex;
+  flex-direction: column;
+  padding: 8px 0;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+.more-drawer-item {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-height: 48px;
+  padding: 14px 20px;
+  color: var(--color-text-primary);
+  text-decoration: none;
+  background: none;
+  border: none;
+  font-size: 1rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s;
+  text-align: left;
+  width: 100%;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.more-drawer-item:hover,
+.more-drawer-item:focus-visible {
+  background: var(--color-bg-tertiary);
+}
+
+.more-drawer-account {
+  margin-top: 8px;
+  border-top: 1px solid var(--color-border);
+  color: var(--color-accent);
+}
+
+// === USER MENU POPUP (desktop rail + mobile from "Cuenta y Ajustes") ===
+.user-menu-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.user-menu-popup {
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  width: 90%;
+  max-width: 320px;
+  overflow: hidden;
+  box-shadow: var(--shadow-lg);
+}
+
+.user-menu-popup .user-menu-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-5);
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-bg-tertiary);
+}
+
+.user-menu-popup .user-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.user-menu-popup .user-name {
+  display: block;
+  font-weight: 600;
+  color: var(--color-text-primary);
   margin: 0 0 var(--space-1);
 }
 
-.drawer-toggle {
-  position: absolute;
-  bottom: var(--space-4);
-  right: var(--space-4);
+.user-menu-popup .user-email {
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
-  .toggle-btn {
-    background: var(--color-bg-tertiary);
-    color: var(--color-text-tertiary);
+.user-menu-actions {
+  padding: var(--space-2);
+}
 
-    &:hover {
-      background: var(--color-border);
-      color: var(--color-text-secondary);
-    }
-  }
+.user-menu-popup .user-menu-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  font-size: 0.875rem;
+  color: var(--color-text-secondary);
+  background: none;
+  border: none;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all var(--duration-fast) var(--ease-out);
+  text-decoration: none;
+}
+
+.user-menu-popup .user-menu-item:hover {
+  background: var(--color-bg-tertiary);
+  color: var(--color-text-primary);
+}
+
+.user-menu-popup .user-menu-item.logout {
+  color: var(--color-danger);
+}
+
+.user-menu-popup .user-menu-item.admin-link {
+  color: #a855f7;
+}
+
+.user-menu-popup .user-menu-item.admin-link:hover {
+  background: rgba(124, 58, 237, 0.1);
+}
+
+.user-menu-popup .user-menu-item.logout:hover {
+  background: var(--color-danger-bg);
+}
+
+.more-drawer-header .close-btn {
+  padding: var(--space-2);
+  border-radius: var(--radius-md);
+  color: var(--color-text-muted);
+  background: none;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.more-drawer-header .close-btn:hover {
+  background: var(--color-bg-tertiary);
+  color: var(--color-text-primary);
+}
+
+// Transitions
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.15s ease;
+}
+
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+}
+
+.slide-up-enter-active,
+.slide-up-leave-active {
+  transition: all 0.2s ease;
+}
+
+.slide-up-enter-from,
+.slide-up-leave-to {
+  opacity: 0;
+  transform: translateY(8px);
+}
+
+.drawer-enter-active,
+.drawer-leave-active {
+  transition: opacity 0.25s ease;
+}
+
+.drawer-enter-active .more-drawer,
+.drawer-leave-active .more-drawer {
+  transition: transform 0.25s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.drawer-enter-from,
+.drawer-leave-to {
+  opacity: 0;
+}
+
+.drawer-enter-from .more-drawer,
+.drawer-leave-to .more-drawer {
+  transform: translateY(100%);
 }
 
 // === QUICK ADD ===
