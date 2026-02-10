@@ -18,7 +18,7 @@
           <div class="brand-logo">
             <q-icon name="sports_soccer" size="22px" />
           </div>
-          <span v-if="$q.screen.gt.xs" class="brand-text">Grootter Finance</span>
+          <span v-if="$q.screen.gt.xs" class="brand-text">Teempad Funds</span>
         </router-link>
 
         <q-space />

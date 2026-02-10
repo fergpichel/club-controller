@@ -6,7 +6,7 @@
         <div class="brand-logo">
           <q-icon name="sports_soccer" size="32px" />
         </div>
-        <h1 class="brand-name">Grootter Finance</h1>
+        <h1 class="brand-name">Teempad Funds</h1>
         <p class="brand-tagline">Gestión financiera inteligente para clubes deportivos</p>
       </div>
 
@@ -99,7 +99,7 @@
       </div>
 
       <!-- Footer -->
-      <p class="login-footer">© 2026 Grootter Finance. Todos los derechos reservados.</p>
+      <p class="login-footer">© 2026 Teempad. Todos los derechos reservados.</p>
     </div>
   </div>
 </template>

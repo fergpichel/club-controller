@@ -1,4 +1,4 @@
-# Grootter Finance
+# Teempad Funds
 
 Aplicacion web PWA para la gestion financiera de clubes deportivos, desarrollada con Vue 3, Quasar Framework y Firebase.
 

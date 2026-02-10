@@ -17,7 +17,7 @@
           <div class="sa-brand-logo">
             <q-icon name="admin_panel_settings" size="20px" />
           </div>
-          <span v-if="$q.screen.gt.xs" class="sa-brand-text">Grootter Admin</span>
+          <span v-if="$q.screen.gt.xs" class="sa-brand-text">Teempad Admin</span>
         </router-link>
 
         <q-space />

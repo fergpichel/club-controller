@@ -3,7 +3,7 @@
     <div class="page-header">
       <div>
         <h1>Panel de Administración</h1>
-        <p class="header-subtitle">Vista general del sistema Grootter Finance</p>
+        <p class="header-subtitle">Vista general del sistema Teempad Funds</p>
       </div>
     </div>
 

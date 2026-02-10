@@ -72,7 +72,7 @@
             <q-item class="settings-item">
               <q-item-section avatar><q-avatar size="36px" color="grey-6" text-color="white" icon="info" /></q-item-section>
               <q-item-section>
-                <q-item-label>Grootter Finance</q-item-label>
+                <q-item-label>Teempad Funds</q-item-label>
                 <q-item-label caption>Versión 1.0.0</q-item-label>
               </q-item-section>
             </q-item>

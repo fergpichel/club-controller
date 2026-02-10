@@ -99,7 +99,7 @@ module.exports = configure(function (/* ctx */) {
         cfg.clientsClaim = true;
       },
       manifest: {
-        name: 'Grootter Finance',
+        name: 'Teempad Funds',
         short_name: 'ClubCtrl',
         description: 'Financial management for sports clubs',
         display: 'standalone',

@@ -2,8 +2,8 @@
   "name": "club-controller",
   "version": "1.0.0",
   "description": "Financial management app for sports clubs",
-  "productName": "Grootter Finance",
-  "author": "Grootter Finance Team",
+  "productName": "Teempad Funds",
+  "author": "Teempad Team",
   "private": true,
   "scripts": {
     "dev": "quasar dev",
