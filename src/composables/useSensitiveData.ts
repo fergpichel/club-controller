@@ -14,9 +14,11 @@ const PRIVACY_MODE_KEY = 'privacyMode'
 /**
  * Shared reactive state so every component using this composable
  * sees the same privacyMode toggle and the same reveal timers.
+ * Default true = hide concepts for sensitive categories for everyone (including admins).
+ * User can turn off in Settings to always show, or use the eye to reveal temporarily.
  */
 const privacyModeEnabled = ref<boolean>(
-  localStorage.getItem(PRIVACY_MODE_KEY) === 'true'
+  localStorage.getItem(PRIVACY_MODE_KEY) !== 'false'
 )
 const revealedIds = reactive(new Map<string, ReturnType<typeof setTimeout>>())
 
@@ -121,17 +123,19 @@ export function useSensitiveData() {
   }
 
   /**
-   * Whether a transaction's description should be masked right now.
+   * Whether a transaction's description (concept) should be masked right now.
    * True when:
-   *   - privacy mode is ON
-   *   - the user CAN view sensitive data (otherwise amount is masked, not description)
-   *   - the transaction belongs to a sensitive category
-   *   - the transaction hasn't been temporarily revealed
+   *   - the transaction belongs to a sensitive category, AND
+   *   - either:
+   *     a) the user CANNOT view sensitive data (editor/viewer) → always mask, no reveal, OR
+   *     b) the user CAN view sensitive data AND privacy mode is ON AND not temporarily revealed
    */
   function isDescriptionMasked(transaction: Transaction): boolean {
-    if (!privacyModeEnabled.value) return false
-    if (!canViewSensitive.value) return false
     if (!isSensitiveTransaction(transaction)) return false
+    // Users without permission: always hide description for sensitive categories
+    if (!canViewSensitive.value) return true
+    // Users with permission: hide only when privacy mode is on and not revealed
+    if (!privacyModeEnabled.value) return false
     return !revealedIds.has(transaction.id)
   }
 

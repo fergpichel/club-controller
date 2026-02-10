@@ -27,9 +27,9 @@
       </div>
     </div>
 
-    <!-- Reveal button (privacy mode) -->
+    <!-- Reveal button (solo para quien puede ver sensibles; en modo privacidad) -->
     <q-btn
-      v-if="descriptionHidden || isTemporarilyRevealed"
+      v-if="canViewSensitive && (descriptionHidden || isTemporarilyRevealed)"
       flat
       round
       dense

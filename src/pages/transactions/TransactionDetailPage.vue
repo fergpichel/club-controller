@@ -26,7 +26,7 @@
           <div class="description" :class="{ 'is-masked-text': descriptionHidden }">
             {{ descriptionHidden ? '••••••••••••••' : transaction.description }}
             <q-btn
-              v-if="descriptionHidden || isTemporarilyRevealed"
+              v-if="canViewSensitive && (descriptionHidden || isTemporarilyRevealed)"
               flat
               round
               dense
@@ -292,6 +292,7 @@ const transactionsStore = useTransactionsStore();
 const categoriesStore = useCategoriesStore();
 
 const {
+  canViewSensitive,
   isDescriptionMasked,
   revealDescription,
   hideDescription,
