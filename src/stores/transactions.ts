@@ -19,7 +19,7 @@ import {
   QueryDocumentSnapshot,
   DocumentData
 } from 'firebase/firestore'
-import { ref as storageRef, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage'
+import { ref as storageRef, uploadBytes, getDownloadURL, deleteObject, type UploadMetadata } from 'firebase/storage'
 import { db, storage } from 'src/boot/firebase'
 import { useAuthStore } from './auth'
 import { useCategoriesStore } from './categories'
@@ -658,8 +658,9 @@ export const useTransactionsStore = defineStore('transactions', () => {
       const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
       const path = `clubs/${authStore.clubId}/transactions/${transactionId}/${timestamp}_${safeName}`
       const fileRef = storageRef(storage, path)
+      const metadata: UploadMetadata = { contentType: file.type || 'application/octet-stream' }
 
-      await uploadBytes(fileRef, file)
+      await uploadBytes(fileRef, file, metadata)
       const url = await getDownloadURL(fileRef)
 
       const attachment: Attachment = {

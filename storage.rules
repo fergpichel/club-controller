@@ -3,18 +3,30 @@ rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
 
+    // Helper: user doc must exist and user's clubId must match path clubId
+    function userBelongsToClub(clubId) {
+      return request.auth != null
+        && firestore.exists(/databases/(default)/documents/users/$(request.auth.uid))
+        && firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.clubId == clubId;
+    }
+
+    // Allowed content types for uploads (images + PDF)
+    function allowedContentType() {
+      return request.resource.contentType == null
+        || request.resource.contentType.matches('image/.*')
+        || request.resource.contentType == 'application/pdf';
+    }
+
     // Club files: only accessible by club members
     match /clubs/{clubId}/{allPaths=**} {
 
       // Read: any authenticated member of the club
-      allow read: if request.auth != null
-        && firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.clubId == clubId;
+      allow read: if userBelongsToClub(clubId);
 
       // Write: club member, max 10MB, only images and PDFs
-      allow write: if request.auth != null
-        && firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.clubId == clubId
+      allow write: if userBelongsToClub(clubId)
         && request.resource.size < 10 * 1024 * 1024
-        && request.resource.contentType.matches('image/.*|application/pdf');
+        && allowedContentType();
     }
 
     // Deny everything else

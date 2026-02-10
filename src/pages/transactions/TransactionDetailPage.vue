@@ -518,13 +518,14 @@ onMounted(async () => {
     flex-direction: column;
     align-items: center;
     padding: 12px;
-    background: var(--color-surface-variant);
+    background: var(--color-bg-tertiary);
     border-radius: var(--radius-sm);
     cursor: pointer;
     transition: all 0.2s ease;
+    color: var(--color-text-primary);
 
     &:hover {
-      background: var(--color-primary);
+      background: var(--color-accent);
       color: white;
 
       :deep(.q-icon) {

@@ -1238,8 +1238,14 @@ onUnmounted(() => {
   -webkit-overflow-scrolling: touch;
 }
 
+/* Mobile: reservar espacio para el bottom nav y padding interno para que los CTA no queden tapados */
 .app-shell.is-mobile .main-content {
-  padding-bottom: calc(72px + env(safe-area-inset-bottom, 0px));
+  padding-bottom: calc(80px + env(safe-area-inset-bottom, 0px));
+}
+
+.app-shell.is-mobile .main-content :deep(.q-page-container) {
+  padding-bottom: calc(80px + env(safe-area-inset-bottom, 0px));
+  box-sizing: border-box;
 }
 
 // === RAIL (desktop: 60px contraído, 200px expandido al hover - como grooter-stats) ===
