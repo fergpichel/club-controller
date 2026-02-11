@@ -44,6 +44,20 @@ export const useTransactionsStore = defineStore('transactions', () => {
   const hasMore = ref(true)
   const currentFilters = ref<TransactionFilters>({})
 
+  /** Cache for fetchAllInDateRange; expires after TTL so other users' new transactions appear. */
+  const RANGE_CACHE_TTL_MS = 2 * 60 * 1000 // 2 minutes
+  const rangeCache = ref<{
+    startTime: number
+    endTime: number
+    list: Transaction[]
+    employeeId: string | null
+    cachedAt: number
+  } | null>(null)
+
+  function invalidateRangeCache() {
+    rangeCache.value = null
+  }
+
   // Getters
   const incomeTransactions = computed(() =>
     transactions.value.filter(t => t.type === 'income')
@@ -338,21 +352,43 @@ export const useTransactionsStore = defineStore('transactions', () => {
   /**
    * Fetch ALL transactions within a date range (no pagination).
    * Used by charts and statistics that need the full season data.
-   *
-   * Uses the same Firestore query pattern (clubId + status + date range)
-   * as statisticsStore.fetchSeasonTrendData, ensuring the existing
-   * composite index (clubId, status, date) is leveraged.
+   * Results are cached by range and employee context; cache is invalidated on create/update/delete
+   * to avoid extra Firestore reads when navigating between Dashboard, Treasury, Stats, Profitability.
    */
   async function fetchAllInDateRange(startDate: Date, endDate: Date) {
+    const authStore = useAuthStore()
+    if (!authStore.clubId) return
+
+    const requestStart = startDate.getTime()
+    const requestEnd = endDate.getTime()
+    const cacheEmployeeId = authStore.isEmployee ? authStore.user?.uid ?? null : null
+
+    // Serve from cache if we have data covering this range, same context, and not expired
+    const cached = rangeCache.value
+    const now = Date.now()
+    if (
+      cached &&
+      requestStart >= cached.startTime &&
+      requestEnd <= cached.endTime &&
+      cached.employeeId === cacheEmployeeId &&
+      now - cached.cachedAt < RANGE_CACHE_TTL_MS
+    ) {
+      const inRange = cached.list.filter(t => {
+        const tTime = new Date(t.date).getTime()
+        return tTime >= requestStart && tTime <= requestEnd
+      })
+      inRange.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+      transactions.value = inRange
+      lastDoc.value = null
+      hasMore.value = false
+      return
+    }
+
     loading.value = true
     error.value = null
 
     try {
-      const authStore = useAuthStore()
-      if (!authStore.clubId) return
-
       // Match the proven query pattern: clubId + status(in) + date range
-      // This reuses the composite index (clubId, status, date) that already exists.
       let q = query(
         collection(db, 'transactions'),
         where('clubId', '==', authStore.clubId),
@@ -361,7 +397,6 @@ export const useTransactionsStore = defineStore('transactions', () => {
         where('date', '<=', Timestamp.fromDate(endDate))
       )
 
-      // Employee: only see own transactions
       if (authStore.isEmployee && authStore.user?.uid) {
         q = query(q, where('createdBy', '==', authStore.user.uid))
       }
@@ -375,13 +410,18 @@ export const useTransactionsStore = defineStore('transactions', () => {
         updatedAt: d.data().updatedAt?.toDate() || new Date()
       })) as Transaction[]
 
-      // Sort client-side (most recent first) since we removed orderBy
       results.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
       transactions.value = results
-
-      // No pagination state when loading all
       lastDoc.value = null
       hasMore.value = false
+
+      rangeCache.value = {
+        startTime: requestStart,
+        endTime: requestEnd,
+        list: results,
+        employeeId: cacheEmployeeId,
+        cachedAt: Date.now()
+      }
     } catch (e) {
       logger.error('Error fetching all transactions in range:', e)
       error.value = 'Error al cargar transacciones'
@@ -453,6 +493,7 @@ export const useTransactionsStore = defineStore('transactions', () => {
       }
 
       transactions.value = [newTransaction, ...transactions.value]
+      invalidateRangeCache()
 
       // If the transaction is pending (created by employee), notify approvers
       if (newTransaction.status === 'pending') {
@@ -541,7 +582,7 @@ export const useTransactionsStore = defineStore('transactions', () => {
           updatedAt: new Date()
         }
       }
-
+      invalidateRangeCache()
       return true
     } catch (e) {
       logger.error('Error updating transaction:', e)
@@ -577,6 +618,7 @@ export const useTransactionsStore = defineStore('transactions', () => {
 
       await deleteDoc(doc(db, 'transactions', id))
       transactions.value = transactions.value.filter(t => t.id !== id)
+      invalidateRangeCache()
       return true
     } catch (e) {
       logger.error('Error deleting transaction:', e)
@@ -796,6 +838,7 @@ export const useTransactionsStore = defineStore('transactions', () => {
     lastDoc.value = null
     hasMore.value = true
     currentFilters.value = {}
+    invalidateRangeCache()
   }
 
   /**

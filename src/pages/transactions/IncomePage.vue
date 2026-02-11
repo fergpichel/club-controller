@@ -280,11 +280,8 @@ async function loadIncome() {
   const start = startOfMonth(currentDate.value);
   const end = endOfMonth(currentDate.value);
 
-  await transactionsStore.fetchTransactions({
-    type: 'income',
-    dateFrom: start,
-    dateTo: end
-  });
+  // fetchAllInDateRange loads the full month (correct totals & breakdown) and reuses range cache
+  await transactionsStore.fetchAllInDateRange(start, end);
 }
 
 // Watch for month changes

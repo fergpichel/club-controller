@@ -536,15 +536,20 @@ function buildFilters(): TransactionFilters {
 // Now that uncategorized is server-side, filteredTransactions = store transactions
 const filteredTransactions = computed(() => transactionsStore.transactions);
 
-// Fetch transactions with current filters and update badge counts (server-side count queries)
+// Fetch transactions with current filters; list updates immediately, badge counts debounced to reduce reads
 async function fetchWithFilters() {
   const filters = buildFilters();
   await transactionsStore.fetchTransactions(filters);
-  await Promise.all([
+  debouncedRefreshBadgeCounts(filters);
+}
+
+// Debounce badge count queries (each count = 1 read per 1000 docs); avoids extra reads when changing filters quickly
+const debouncedRefreshBadgeCounts = useDebounceFn((filters: TransactionFilters) => {
+  Promise.all([
     transactionsStore.fetchPendingFilteredCount(filters),
     transactionsStore.fetchUncategorizedFilteredCount(filters)
   ]);
-}
+}, 500);
 
 // Debounced fetch for search input (300ms delay to avoid firing on every keystroke)
 const debouncedSearch = useDebounceFn(() => {
@@ -794,7 +799,6 @@ async function applyAcceptedSuggestions() {
 
     showAISuggestions.value = false
     fetchWithFilters()
-    transactionsStore.fetchUncategorizedCount() // Refresh count
   } catch (e) {
     console.error('[AI] Apply suggestions error:', e)
     $q.notify({ type: 'negative', message: 'Error al aplicar sugerencias' })
@@ -810,11 +814,7 @@ onMounted(async () => {
     categoriesStore.fetchCategories(),
     teamsStore.fetchTeams()
   ]);
-  // Fetch transactions + uncategorized count in parallel
-  await Promise.all([
-    fetchWithFilters(),
-    transactionsStore.fetchUncategorizedCount()
-  ]);
+  await fetchWithFilters();
 });
 </script>
 
